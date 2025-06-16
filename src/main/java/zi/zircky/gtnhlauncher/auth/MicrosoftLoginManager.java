@@ -17,14 +17,18 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.Properties;
 import java.util.function.Consumer;
+import java.util.logging.Logger;
 
 public class MicrosoftLoginManager {
+  Logger log = Logger.getLogger(getClass().getName());
+
   private static final String CLIENT_ID;
   private static final String CLIENT_SECRET; // Опционально
   private static final String REDIRECT_URI = "http://localhost:8080/callback";
-  private static final String SCOPE = "XboxLive.signin XboxLive.offline_access openid profile";
+  private static final String SCOPE = "https://api.minecraftservices.com/XboxLive.signin https://api.minecraftservices.com/XboxLive.offline_access openid profile";
   private static final Gson GSON = new Gson();
   private final OAuth20Service oauthService;
   private HttpServer callbackServer;
@@ -87,13 +91,26 @@ public class MicrosoftLoginManager {
       try {
         System.out.println("Received OAuth code: " + code);
         OAuth2AccessToken accessToken = oauthService.getAccessToken(code);
-        System.out.println("Microsoft access token: " + accessToken.getAccessToken());
+        System.out.println("Microsoft access token: " + (accessToken.getAccessToken().length() > 10 ? accessToken.getAccessToken().substring(0, 10) + "..." : accessToken.getAccessToken()));
         System.out.println("Token scope: " + accessToken.getScope());
-        System.out.println("Refresh token: " + accessToken.getRefreshToken());
+        System.out.println("Refresh token: " + (accessToken.getRefreshToken() != null ? accessToken.getRefreshToken().substring(0, 10) + "..." : "<none>"));
         String msAccessToken = accessToken.getAccessToken();
 
+        if (accessToken.getRefreshToken() != null) {
+          try {
+            OAuth2AccessToken refreshedToken = oauthService.refreshAccessToken(accessToken.getRefreshToken());
+            System.out.println("Refreshed access token: " + (refreshedToken.getAccessToken().length() > 10 ? refreshedToken.getAccessToken().substring(0, 10) + "..." : refreshedToken.getAccessToken()));
+            msAccessToken = refreshedToken.getAccessToken();
+          } catch (Exception e) {
+            System.out.println("Failed to refresh token: " + e.getMessage());
+          }
+        }
+
         String xboxLiveToken = authenticateXboxLive(msAccessToken);
+        System.out.println("Xbox Live token: " + (xboxLiveToken.length() > 10 ? xboxLiveToken.substring(0, 10) + "..." : xboxLiveToken));
         String[] xstsData = getXSTSToken(xboxLiveToken);
+        System.out.println("XSTS UHS: " + (xstsData[0].length() > 10 ? xstsData[0].substring(0, 10) + "..." : xstsData[0]));
+        System.out.println("XSTS Token: " + (xstsData[1].length() > 10 ? xstsData[1].substring(0, 10) + "..." : xstsData[1]));
         String minecraftToken = authenticateMinecraft(xstsData[0], xstsData[1]);
         boolean ownsMinecraft = checkGameOwnership(minecraftToken);
         String[] profile = getMinecraftProfile(minecraftToken);
@@ -126,18 +143,23 @@ public class MicrosoftLoginManager {
   }
 
   private String authenticateXboxLive(String msAccessToken) throws IOException, InterruptedException {
-    HttpClient client = HttpClient.newHttpClient();
-    XboxLiveAuthRequest authRequest = new XboxLiveAuthRequest("RPS", "user.auth.xboxlive.com", "d=" + msAccessToken);
-    String json = GSON.toJson(authRequest);
+    HttpClient client = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(30))
+        .build();
+
+    String json = "{\"Properties\":{\"AuthMethod\":\"RPS\",\"SiteName\":\"user.auth.xboxlive.com\",\"RpsTicket\":\"d=" + msAccessToken + "\"},\"RelyingParty\":\"http://auth.xboxlive.com\",\"TokenType\":\"JWT\"}";
     System.out.println("XboxLiveAuthRequest JSON: " + json);
 
     HttpRequest request = HttpRequest.newBuilder()
         .uri(URI.create("https://user.auth.xboxlive.com/user/authenticate"))
         .header("Content-Type", "application/json")
         .header("Accept", "application/json")
-        .header("x-xbl-contract-version", "1")
+        .header("x-xbl-contract-version", "2")
         .POST(HttpRequest.BodyPublishers.ofString(json))
         .build();
+
+    System.out.println("Xbox Live request URI: " + request.uri());
+    System.out.println("Xbox Live request headers: " + request.headers());
 
     HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
     System.out.println("Xbox Live response status: " + response.statusCode());
@@ -162,23 +184,31 @@ public class MicrosoftLoginManager {
   }
 
   private String[] getXSTSToken(String xboxLiveToken) throws IOException, InterruptedException {
-    HttpClient client = HttpClient.newHttpClient();
-    String json = GSON.toJson(new XSTSAuthRequest(new String[]{xboxLiveToken}));
+    HttpClient client = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(30))
+        .build();
+
+    String json = "{\"Properties\":{\"UserTokens\":[\"" + xboxLiveToken + "\"],\"SandboxId\":\"RETAIL\"},\"RelyingParty\":\"rp://api.minecraftservices.com/\",\"TokenType\":\"JWT\"}";
     System.out.println("XSTSAuthRequest JSON: " + json);
 
     HttpRequest request = HttpRequest.newBuilder()
         .uri(URI.create("https://xsts.auth.xboxlive.com/xsts/authorize"))
         .header("Content-Type", "application/json")
         .header("Accept", "application/json")
+        .header("x-xbl-contract-version", "1")
         .POST(HttpRequest.BodyPublishers.ofString(json))
         .build();
 
+    System.out.println("XSTS request URI: " + request.uri());
+    System.out.println("XSTS request headers: " + request.headers());
+
     HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
     System.out.println("XSTS response status: " + response.statusCode());
+    System.out.println("XSTS response headers: " + response.headers());
     System.out.println("XSTS response body: " + (response.body().isEmpty() ? "<empty>" : response.body()));
 
     if (response.statusCode() != 200) {
-      throw new IOException("XSTS authentication failed with status: " + response.statusCode() + ", body: " + response.body());
+      throw new IOException("XSTS authentication failed with status: " + response.statusCode() + ", body: " + (response.body().isEmpty() ? "<empty>" : response.body()));
     }
 
     JsonObject jsonResponse = GSON.fromJson(response.body(), JsonObject.class);
@@ -198,8 +228,11 @@ public class MicrosoftLoginManager {
   }
 
   private String authenticateMinecraft(String uhs, String xstsToken) throws IOException, InterruptedException {
-    HttpClient client = HttpClient.newHttpClient();
-    String json = GSON.toJson(new MinecraftAuthRequest("XBL3.0 x=" + uhs + ";" + xstsToken));
+    HttpClient client = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(30))
+        .build();
+
+    String json = "{\"identityToken\":\"XBL3.0 x=" + uhs + ";" + xstsToken + "\"}";
     System.out.println("MinecraftAuthRequest JSON: " + json);
 
     HttpRequest request = HttpRequest.newBuilder()
@@ -209,12 +242,16 @@ public class MicrosoftLoginManager {
         .POST(HttpRequest.BodyPublishers.ofString(json))
         .build();
 
+    System.out.println("Minecraft request URI: " + request.uri());
+    System.out.println("Minecraft request headers: " + request.headers());
+
     HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
     System.out.println("Minecraft auth response status: " + response.statusCode());
+    System.out.println("Minecraft auth response headers: " + response.headers());
     System.out.println("Minecraft auth response body: " + (response.body().isEmpty() ? "<empty>" : response.body()));
 
     if (response.statusCode() != 200) {
-      throw new IOException("Minecraft authentication failed with status: " + response.statusCode() + ", body: " + response.body());
+      throw new IOException("Minecraft authentication failed with status: " + response.statusCode() + ", body: " + (response.body().isEmpty() ? "<empty>" : response.body()));
     }
 
     JsonObject jsonResponse = GSON.fromJson(response.body(), JsonObject.class);
@@ -231,7 +268,10 @@ public class MicrosoftLoginManager {
   }
 
   private boolean checkGameOwnership(String minecraftToken) throws IOException, InterruptedException {
-    HttpClient client = HttpClient.newHttpClient();
+    HttpClient client = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(30))
+        .build();
+
     HttpRequest request = HttpRequest.newBuilder()
         .uri(URI.create("https://api.minecraftservices.com/entitlements/mcstore"))
         .header("Authorization", "Bearer " + minecraftToken)
@@ -261,7 +301,10 @@ public class MicrosoftLoginManager {
   }
 
   private String[] getMinecraftProfile(String minecraftToken) throws IOException, InterruptedException {
-    HttpClient client = HttpClient.newHttpClient();
+    HttpClient client = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(30))
+        .build();
+
     HttpRequest request = HttpRequest.newBuilder()
         .uri(URI.create("https://api.minecraftservices.com/minecraft/profile"))
         .header("Authorization", "Bearer " + minecraftToken)
