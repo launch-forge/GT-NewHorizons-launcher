@@ -3,6 +3,10 @@ package zi.zircky.gtnhlauncher.loading;
 import java.io.File;
 
 public class MinecraftUtils {
+  private MinecraftUtils() {
+    throw new IllegalStateException("Utility class");
+  }
+
   public static File getMinecraftDir() {
     String os = System.getProperty("os.name").toLowerCase();
     if (os.contains("win")) {
