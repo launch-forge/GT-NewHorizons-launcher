@@ -10,6 +10,9 @@ import javafx.scene.control.Label;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import zi.zircky.gtnhlauncher.LauncherApplication;
+import zi.zircky.gtnhlauncher.loading.MinecraftLauncher;
+import zi.zircky.gtnhlauncher.loading.MinecraftUtils;
+import zi.zircky.gtnhlauncher.settings.LauncherSettings;
 
 import java.awt.*;
 import java.io.File;
@@ -46,7 +49,22 @@ public class LauncherController {
 
   @FXML
   private void onSettingsClicked() {
-    showAlert("Настройки", "Окно настроек пока не реализовано.");
+    try {
+      FXMLLoader loader = new FXMLLoader(LauncherApplication.class.getResource("settings.fxml"));
+      Parent root = loader.load();
+      Stage dialog = new Stage();
+      dialog.setTitle("Настройки");
+      dialog.setScene(new Scene(root));
+      dialog.initModality(Modality.APPLICATION_MODAL);
+      dialog.showAndWait();
+
+      SettingsController settingsController = loader.getController();
+//      String newSetting = settingsController
+
+    } catch (Exception e) {
+      showAlert("Ошибка", "Окно настроек пока не реализовано.");
+    }
+
   }
 
   @FXML
@@ -93,7 +111,25 @@ public class LauncherController {
 
   @FXML
   private void onLaunch() {
-    showAlert("Запуск", "Запуск сборки: " + versionSelector.getValue());
+    LauncherSettings settings = LauncherSettings.load();
+
+    File javaFile = new File(settings.getJavaPath());
+    if (!javaFile.exists()) {
+      showAlert("Java не найдена", "Путь к Java недействителен.");
+      return;
+    }
+
+    File gameDir = MinecraftUtils.getMinecraftDir();
+    String version = "1.7.10";
+    String username = "Player";
+
+    try {
+      MinecraftLauncher.launch(javaFile, settings.getAllocatedRam(), username, gameDir, version);
+    } catch (IOException e) {
+      e.printStackTrace();
+      showAlert("Ошибка запуска", e.getMessage());
+    }
+
   }
 
   private void saveAccountToFile(String name) {
