@@ -12,6 +12,7 @@ import com.sun.net.httpserver.HttpServer;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -28,7 +29,8 @@ public class MicrosoftLoginManager {
   private static final String CLIENT_ID;
   private static final String CLIENT_SECRET; // Опционально
   private static final String REDIRECT_URI = "http://localhost:8080/callback";
-  private static final String SCOPE = "https://api.minecraftservices.com/XboxLive.signin https://api.minecraftservices.com/XboxLive.offline_access openid profile";
+  private static int CALLBACK_PORT = 8080;
+  private static final String SCOPE = "XboxLive.signin XboxLive.offline_access";
   private static final Gson GSON = new Gson();
   private final OAuth20Service oauthService;
   private HttpServer callbackServer;
@@ -60,7 +62,9 @@ public class MicrosoftLoginManager {
   }
 
   public String getAuthorizationUrl() {
-    return oauthService.getAuthorizationUrl();
+    String authUrl = oauthService.getAuthorizationUrl();
+    System.out.println("Authorization URL: " + authUrl);
+    return authUrl;
   }
 
   public void login(Consumer<String[]> onSuccess, Consumer<String> onError) {
@@ -75,22 +79,55 @@ public class MicrosoftLoginManager {
 
   private void startCallbackServer() throws IOException {
     if (callbackServer != null) {
-      callbackServer.stop(0);
+      try {
+        callbackServer.stop(0);
+        System.out.println("Callback server stopped");
+      } catch (Exception e) {
+        System.err.println("Failed to stop existing server: " + e.getMessage());
+      }
     }
-    callbackServer = HttpServer.create(new InetSocketAddress(8080), 0);
-    callbackServer.createContext("/callback", this::handleCallback);
-    callbackServer.setExecutor(null);
-    callbackServer.start();
+
+    int[] portsToTry = {CALLBACK_PORT, 8081, 8082};
+    IOException lastException = null;
+
+    for (int port : portsToTry) {
+      try {
+        callbackServer = HttpServer.create(new InetSocketAddress(port), 0);
+        callbackServer.createContext("/callback", this::handleCallback);
+        callbackServer.setExecutor(null);
+        callbackServer.start();
+        System.out.println("Callback server started on port: " + port);
+        return;
+      } catch (BindException e) {
+        lastException = e;
+        System.err.println("Failed to bind to port " + port + ": " + e.getMessage());
+      }
+    }
+
+    throw new IOException("Unable to start callback server on any port", lastException);
   }
 
   private void handleCallback(HttpExchange exchange) throws IOException {
     String query = exchange.getRequestURI().getQuery();
-    String code = query != null && query.contains("code=") ? query.split("code=")[1].split("&")[0] : null;
+    System.out.println("Callback query: " + query);
+    String code = null;
+    String error = null;
+
+    if (query != null) {
+      if (query.contains("code=")) {
+        code = query.split("code=")[1].split("&")[0];
+      } else if (query.contains("error=")) {
+        error = query.split("error=")[1].split("&")[0];
+        String errorDescription = query.contains("error_description=") ? query.split("error_description=")[1].split("&")[0] : "No description";
+        System.out.println("OAuth error: " + error + ", description: " + errorDescription);
+      }
+    }
 
     if (code != null) {
       try {
         System.out.println("Received OAuth code: " + code);
         OAuth2AccessToken accessToken = oauthService.getAccessToken(code);
+        System.out.println("OAuth token request sent to: " + oauthService.getApi().getAccessTokenEndpoint());
         System.out.println("Microsoft access token: " + (accessToken.getAccessToken().length() > 10 ? accessToken.getAccessToken().substring(0, 10) + "..." : accessToken.getAccessToken()));
         System.out.println("Token scope: " + accessToken.getScope());
         System.out.println("Refresh token: " + (accessToken.getRefreshToken() != null ? accessToken.getRefreshToken().substring(0, 10) + "..." : "<none>"));
@@ -131,11 +168,19 @@ public class MicrosoftLoginManager {
         exchange.getResponseBody().write(response.getBytes());
       } finally {
         exchange.close();
-        callbackServer.stop(0);
+        if (callbackServer != null) {
+          try {
+            callbackServer.stop(0);
+            System.out.println("Callback server stopped");
+          } catch (Exception e) {
+            System.err.println("Failed to stop callback server: " + e.getMessage());
+          }
+        }
       }
     } else {
-      onError.accept("Ошибка: код авторизации не получен.");
-      String response = "Ошибка: код авторизации не получен.";
+      String errorMsg = error != null ? "OAuth error: " + error + (query.contains("error_description=") ? ", description: " + query.split("error_description=")[1].split("&")[0] : "") : "Ошибка: код авторизации не получен.";
+      onError.accept(errorMsg);
+      String response = errorMsg;
       exchange.sendResponseHeaders(400, response.getBytes().length);
       exchange.getResponseBody().write(response.getBytes());
       exchange.close();
