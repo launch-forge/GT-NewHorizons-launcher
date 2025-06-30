@@ -24,12 +24,12 @@ import java.util.function.Consumer;
 import java.util.logging.Logger;
 
 public class MicrosoftLoginManager {
-  Logger log = Logger.getLogger(getClass().getName());
+  private static final Logger log = Logger.getLogger(MicrosoftLoginManager.class.getName());
 
   private static final String CLIENT_ID;
   private static final String CLIENT_SECRET; // Опционально
   private static final String REDIRECT_URI = "http://localhost:8080/callback";
-  private static int CALLBACK_PORT = 8080;
+  private static final int CALLBACK_PORT = 8080;
   private static final String SCOPE = "XboxLive.signin XboxLive.offline_access";
   private static final Gson GSON = new Gson();
   private final OAuth20Service oauthService;
@@ -43,10 +43,10 @@ public class MicrosoftLoginManager {
       if (input != null) {
         props.load(input);
       } else {
-        System.err.println("Warning: application.properties not found, using default values");
+        log.warning("Warning: application.properties not found, using default values");
       }
     } catch (IOException e) {
-      System.err.println("Error loading application.properties: " + e.getMessage());
+      log.warning("Error loading application.properties: " + e.getMessage());
     }
 
     CLIENT_ID = props.getProperty("microsoft.client.id");
@@ -63,7 +63,7 @@ public class MicrosoftLoginManager {
 
   public String getAuthorizationUrl() {
     String authUrl = oauthService.getAuthorizationUrl();
-    System.out.println("Authorization URL: " + authUrl);
+    log.info("Authorization URL: " + authUrl);
     return authUrl;
   }
 
@@ -81,9 +81,9 @@ public class MicrosoftLoginManager {
     if (callbackServer != null) {
       try {
         callbackServer.stop(0);
-        System.out.println("Callback server stopped");
+        log.info("Callback server stopped");
       } catch (Exception e) {
-        System.err.println("Failed to stop existing server: " + e.getMessage());
+        log.warning("Failed to stop existing server: " + e.getMessage());
       }
     }
 
@@ -96,11 +96,11 @@ public class MicrosoftLoginManager {
         callbackServer.createContext("/callback", this::handleCallback);
         callbackServer.setExecutor(null);
         callbackServer.start();
-        System.out.println("Callback server started on port: " + port);
+        log.info("Callback server started on port: " + port);
         return;
       } catch (BindException e) {
         lastException = e;
-        System.err.println("Failed to bind to port " + port + ": " + e.getMessage());
+        log.warning("Failed to bind to port " + port + ": " + e.getMessage());
       }
     }
 
@@ -109,7 +109,7 @@ public class MicrosoftLoginManager {
 
   private void handleCallback(HttpExchange exchange) throws IOException {
     String query = exchange.getRequestURI().getQuery();
-    System.out.println("Callback query: " + query);
+    log.info("Callback query: " + query);
     String code = null;
     String error = null;
 
@@ -119,35 +119,35 @@ public class MicrosoftLoginManager {
       } else if (query.contains("error=")) {
         error = query.split("error=")[1].split("&")[0];
         String errorDescription = query.contains("error_description=") ? query.split("error_description=")[1].split("&")[0] : "No description";
-        System.out.println("OAuth error: " + error + ", description: " + errorDescription);
+        log.info("OAuth error: " + error + ", description: " + errorDescription);
       }
     }
 
     if (code != null) {
       try {
-        System.out.println("Received OAuth code: " + code);
+        log.info("Received OAuth code: " + code);
         OAuth2AccessToken accessToken = oauthService.getAccessToken(code);
-        System.out.println("OAuth token request sent to: " + oauthService.getApi().getAccessTokenEndpoint());
-        System.out.println("Microsoft access token: " + (accessToken.getAccessToken().length() > 10 ? accessToken.getAccessToken().substring(0, 10) + "..." : accessToken.getAccessToken()));
-        System.out.println("Token scope: " + accessToken.getScope());
-        System.out.println("Refresh token: " + (accessToken.getRefreshToken() != null ? accessToken.getRefreshToken().substring(0, 10) + "..." : "<none>"));
+        log.info("OAuth token request sent to: " + oauthService.getApi().getAccessTokenEndpoint());
+        log.info("Microsoft access token: " + (accessToken.getAccessToken().length() > 10 ? accessToken.getAccessToken().substring(0, 10) + "..." : accessToken.getAccessToken()));
+        log.info("Token scope: " + accessToken.getScope());
+        log.info("Refresh token: " + (accessToken.getRefreshToken() != null ? accessToken.getRefreshToken().substring(0, 10) + "..." : "<none>"));
         String msAccessToken = accessToken.getAccessToken();
 
         if (accessToken.getRefreshToken() != null) {
           try {
             OAuth2AccessToken refreshedToken = oauthService.refreshAccessToken(accessToken.getRefreshToken());
-            System.out.println("Refreshed access token: " + (refreshedToken.getAccessToken().length() > 10 ? refreshedToken.getAccessToken().substring(0, 10) + "..." : refreshedToken.getAccessToken()));
+            log.info("Refreshed access token: " + (refreshedToken.getAccessToken().length() > 10 ? refreshedToken.getAccessToken().substring(0, 10) + "..." : refreshedToken.getAccessToken()));
             msAccessToken = refreshedToken.getAccessToken();
           } catch (Exception e) {
-            System.out.println("Failed to refresh token: " + e.getMessage());
+            log.info("Failed to refresh token: " + e.getMessage());
           }
         }
 
         String xboxLiveToken = authenticateXboxLive(msAccessToken);
-        System.out.println("Xbox Live token: " + (xboxLiveToken.length() > 10 ? xboxLiveToken.substring(0, 10) + "..." : xboxLiveToken));
+        log.info("Xbox Live token: " + (xboxLiveToken.length() > 10 ? xboxLiveToken.substring(0, 10) + "..." : xboxLiveToken));
         String[] xstsData = getXSTSToken(xboxLiveToken);
-        System.out.println("XSTS UHS: " + (xstsData[0].length() > 10 ? xstsData[0].substring(0, 10) + "..." : xstsData[0]));
-        System.out.println("XSTS Token: " + (xstsData[1].length() > 10 ? xstsData[1].substring(0, 10) + "..." : xstsData[1]));
+        log.info("XSTS UHS: " + (xstsData[0].length() > 10 ? xstsData[0].substring(0, 10) + "..." : xstsData[0]));
+        log.info("XSTS Token: " + (xstsData[1].length() > 10 ? xstsData[1].substring(0, 10) + "..." : xstsData[1]));
         String minecraftToken = authenticateMinecraft(xstsData[0], xstsData[1]);
         boolean ownsMinecraft = checkGameOwnership(minecraftToken);
         String[] profile = getMinecraftProfile(minecraftToken);
@@ -171,9 +171,9 @@ public class MicrosoftLoginManager {
         if (callbackServer != null) {
           try {
             callbackServer.stop(0);
-            System.out.println("Callback server stopped");
+            log.info("Callback server stopped");
           } catch (Exception e) {
-            System.err.println("Failed to stop callback server: " + e.getMessage());
+            log.warning("Failed to stop callback server: " + e.getMessage());
           }
         }
       }
@@ -193,7 +193,7 @@ public class MicrosoftLoginManager {
         .build();
 
     String json = "{\"Properties\":{\"AuthMethod\":\"RPS\",\"SiteName\":\"user.auth.xboxlive.com\",\"RpsTicket\":\"d=" + msAccessToken + "\"},\"RelyingParty\":\"http://auth.xboxlive.com\",\"TokenType\":\"JWT\"}";
-    System.out.println("XboxLiveAuthRequest JSON: " + json);
+    log.info("XboxLiveAuthRequest JSON: " + json);
 
     HttpRequest request = HttpRequest.newBuilder()
         .uri(URI.create("https://user.auth.xboxlive.com/user/authenticate"))
@@ -203,13 +203,13 @@ public class MicrosoftLoginManager {
         .POST(HttpRequest.BodyPublishers.ofString(json))
         .build();
 
-    System.out.println("Xbox Live request URI: " + request.uri());
-    System.out.println("Xbox Live request headers: " + request.headers());
+    log.info("Xbox Live request URI: " + request.uri());
+    log.info("Xbox Live request headers: " + request.headers());
 
     HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-    System.out.println("Xbox Live response status: " + response.statusCode());
-    System.out.println("Xbox Live response headers: " + response.headers());
-    System.out.println("Xbox Live response body: " + (response.body().isEmpty() ? "<empty>" : response.body()));
+    log.info("Xbox Live response status: " + response.statusCode());
+    log.info("Xbox Live response headers: " + response.headers());
+    log.info("Xbox Live response body: " + (response.body().isEmpty() ? "<empty>" : response.body()));
 
     if (response.statusCode() != 200) {
       throw new IOException("Xbox Live authentication failed with status: " + response.statusCode() + ", body: " + (response.body().isEmpty() ? "<empty>" : response.body()));
@@ -234,7 +234,7 @@ public class MicrosoftLoginManager {
         .build();
 
     String json = "{\"Properties\":{\"UserTokens\":[\"" + xboxLiveToken + "\"],\"SandboxId\":\"RETAIL\"},\"RelyingParty\":\"rp://api.minecraftservices.com/\",\"TokenType\":\"JWT\"}";
-    System.out.println("XSTSAuthRequest JSON: " + json);
+    log.info("XSTSAuthRequest JSON: " + json);
 
     HttpRequest request = HttpRequest.newBuilder()
         .uri(URI.create("https://xsts.auth.xboxlive.com/xsts/authorize"))
@@ -244,13 +244,13 @@ public class MicrosoftLoginManager {
         .POST(HttpRequest.BodyPublishers.ofString(json))
         .build();
 
-    System.out.println("XSTS request URI: " + request.uri());
-    System.out.println("XSTS request headers: " + request.headers());
+    log.info("XSTS request URI: " + request.uri());
+    log.info("XSTS request headers: " + request.headers());
 
     HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-    System.out.println("XSTS response status: " + response.statusCode());
-    System.out.println("XSTS response headers: " + response.headers());
-    System.out.println("XSTS response body: " + (response.body().isEmpty() ? "<empty>" : response.body()));
+    log.info("XSTS response status: " + response.statusCode());
+    log.info("XSTS response headers: " + response.headers());
+    log.info("XSTS response body: " + (response.body().isEmpty() ? "<empty>" : response.body()));
 
     if (response.statusCode() != 200) {
       throw new IOException("XSTS authentication failed with status: " + response.statusCode() + ", body: " + (response.body().isEmpty() ? "<empty>" : response.body()));
@@ -278,7 +278,7 @@ public class MicrosoftLoginManager {
         .build();
 
     String json = "{\"identityToken\":\"XBL3.0 x=" + uhs + ";" + xstsToken + "\"}";
-    System.out.println("MinecraftAuthRequest JSON: " + json);
+    log.info("MinecraftAuthRequest JSON: " + json);
 
     HttpRequest request = HttpRequest.newBuilder()
         .uri(URI.create("https://api.minecraftservices.com/authentication/login_with_xbox"))
@@ -287,13 +287,13 @@ public class MicrosoftLoginManager {
         .POST(HttpRequest.BodyPublishers.ofString(json))
         .build();
 
-    System.out.println("Minecraft request URI: " + request.uri());
-    System.out.println("Minecraft request headers: " + request.headers());
+    log.info("Minecraft request URI: " + request.uri());
+    log.info("Minecraft request headers: " + request.headers());
 
     HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-    System.out.println("Minecraft auth response status: " + response.statusCode());
-    System.out.println("Minecraft auth response headers: " + response.headers());
-    System.out.println("Minecraft auth response body: " + (response.body().isEmpty() ? "<empty>" : response.body()));
+    log.info("Minecraft auth response status: " + response.statusCode());
+    log.info("Minecraft auth response headers: " + response.headers());
+    log.info("Minecraft auth response body: " + (response.body().isEmpty() ? "<empty>" : response.body()));
 
     if (response.statusCode() != 200) {
       throw new IOException("Minecraft authentication failed with status: " + response.statusCode() + ", body: " + (response.body().isEmpty() ? "<empty>" : response.body()));
@@ -325,8 +325,8 @@ public class MicrosoftLoginManager {
         .build();
 
     HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-    System.out.println("Ownership check response status: " + response.statusCode());
-    System.out.println("Ownership check response body: " + (response.body().isEmpty() ? "<empty>" : response.body()));
+    log.info("Ownership check response status: " + response.statusCode());
+    log.info("Ownership check response body: " + (response.body().isEmpty() ? "<empty>" : response.body()));
 
     if (response.statusCode() != 200) {
       throw new IOException("Ownership check failed with status: " + response.statusCode() + ", body: " + response.body());
@@ -358,8 +358,8 @@ public class MicrosoftLoginManager {
         .build();
 
     HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-    System.out.println("Profile response status: " + response.statusCode());
-    System.out.println("Profile response body: " + (response.body().isEmpty() ? "<empty>" : response.body()));
+    log.info("Profile response status: " + response.statusCode());
+    log.info("Profile response body: " + (response.body().isEmpty() ? "<empty>" : response.body()));
 
     if (response.statusCode() != 200) {
       throw new IOException("Profile fetch failed with status: " + response.statusCode() + ", body: " + response.body());
@@ -390,4 +390,5 @@ public class MicrosoftLoginManager {
       return "https://login.live.com/oauth20_authorize.srf";
     }
   }
+
 }
