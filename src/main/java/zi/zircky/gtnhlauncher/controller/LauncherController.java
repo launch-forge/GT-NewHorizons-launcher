@@ -46,7 +46,20 @@ public class LauncherController {
 
   @FXML
   private void onSettingsClicked() {
-    showAlert("Настройки", "Окно настроек пока не реализовано.");
+    try {
+      FXMLLoader loader = new FXMLLoader(LauncherApplication.class.getResource("setting-view.fxml"));
+      Parent root = loader.load();
+
+      Stage stage = new Stage();
+      stage.setTitle("Настройки лаунчера");
+      stage.setScene(new Scene(root));
+      stage.initModality(Modality.APPLICATION_MODAL); // блокирует основное окно
+      stage.setResizable(false);
+      stage.showAndWait();
+    } catch (IOException e) {
+      e.printStackTrace();
+      showAlert("Ошибка", "Не удалось открыть окно настроек");
+    }
   }
 
   @FXML
