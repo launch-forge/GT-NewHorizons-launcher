@@ -16,20 +16,26 @@ import zi.zircky.gtnhlauncher.service.download.MinecraftLauncher;
 import zi.zircky.gtnhlauncher.service.download.MinecraftUtils;
 import zi.zircky.gtnhlauncher.service.download.MojangInstaller;
 
-import java.awt.*;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
+
+import java.awt.Desktop;
+import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URL;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
+
+import static zi.zircky.gtnhlauncher.gtnh.ZipUtils.unzip;
 
 public class LauncherController {
+
   @FXML
   private ComboBox<String> versionSelector;
 
   @FXML
-  private ComboBox<String> modpackSelector;
+  private ComboBox<String> gtnhSelector;
 
   @FXML
   private Label accountName;
@@ -46,7 +52,15 @@ public class LauncherController {
   @FXML
   private Label progressBarLabel;
 
+  @FXML
+  private CheckBox releaseCheckBox;
+
+  @FXML
+  private CheckBox betaCheckBox;
+
   private final File mcDir = MinecraftUtils.getMinecraftDir();
+  private static final String GTNH_DOWNLOAD_LIST = "https://downloads.gtnewhorizons.com/Multi_mc_downloads/?raw";
+
 
   @FXML
   protected void initialize() {
@@ -57,8 +71,14 @@ public class LauncherController {
       }
     });
 
-    modpackSelector.getItems().addAll("Default", "Custom");
-    modpackSelector.getSelectionModel().selectFirst();
+    gtnhSelector.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, selected) -> {
+      if (selected != null) updateGtnhAction(selected);
+    });
+
+    releaseCheckBox.setOnAction(e -> loadGtnhBuilds());
+    betaCheckBox.setOnAction(e -> loadGtnhBuilds());
+
+    loadGtnhBuilds();
 
     progressLabel.setText("Запусков: 7 | Время в игре: 196ч");
     accountName.setText(loadAccountFromFile());
@@ -126,25 +146,39 @@ public class LauncherController {
 
   @FXML
   private void onLaunch() {
-    String version = versionSelector.getValue();
-    if (version == null || version.isEmpty()) {
-      showError("Выберите версию Minecraft.");
+    String version = versionSelector.getValue(); // или gtnhVersionSelector
+    String zip = gtnhSelector.getValue();
+    if (version == null || version.isEmpty() && zip == null || zip.isEmpty()) {
+      showError("Выберите версию Minecraft или GTNH.");
       return;
     }
 
-    if (isVersionInstalled(version)) {
-      runMinecraft(version);
-    } else {
-      installMinecraft(version);
-    }
+      File jar = new File(mcDir, "versions/" + version + "/" + version + ".jar");
+      if (jar.exists()) {
+        runMinecraft(version);
+      } else {
+        installMinecraft(version);
+      }
+
+      String modpack = zip.replace(".zip", "");
+      File jarGtnh = new File(mcDir, "versions/" + version + "/" + version + ".jar");
+      if (jar.exists()) {
+        runMinecraft(version);
+      } else {
+        installGtnhBuild(zip);
+      }
   }
 
   private void updateActionButton(String versionId) {
-    if (isVersionInstalled(versionId)) {
-      actionButton.setText("Запустить");
-    } else {
-      actionButton.setText("Установить");
-    }
+    File jar = new File(mcDir, "versions/" + versionId + "/" + versionId + ".jar");
+    actionButton.setText(jar.exists() ? "Запустить" : "Установить");
+  }
+
+  private void updateGtnhAction(String zipName) {
+    String versionName = zipName.replace(".zip", "");
+    File dir = new File(mcDir, "versions/" + versionName);
+    File jar = new File(dir, versionName + ".jar");
+    actionButton.setText(jar.exists() ? "Запустить" : "Установить");
   }
 
   // Проверка: установлена ли версия
@@ -187,7 +221,7 @@ public class LauncherController {
         MojangInstaller.installVersion(version, mcDir, (progress, message) -> {
           Platform.runLater(() -> {
             progressBar.setProgress(progress);
-            progressBarLabel.setText((int)(progress * 100) + "% • " + message);
+            progressBarLabel.setText((int) (progress * 100) + "% • " + message);
           });
         });
 
@@ -205,12 +239,51 @@ public class LauncherController {
           new Thread(() -> {
             try {
               Thread.sleep(2000);
-            } catch (InterruptedException ignored) {}
+            } catch (InterruptedException ignored) {
+            }
             Platform.runLater(() -> {
               progressBar.setVisible(false);
               progressBarLabel.setVisible(false);
             });
           }).start();
+        });
+      }
+    }).start();
+  }
+
+  private void installGtnhBuild(String version) {
+    actionButton.setDisable(true);
+    actionButton.setText("Устанавливаем GTNH...");
+    progressBar.setVisible(true);
+    progressLabel.setVisible(true);
+
+    String downloadUrl = "https://downloads.gtnewhorizons.com/Multi_mc_downloads/" + version;
+
+    File zipFile = new File("gtnh_temp.zip");
+    File versionsDir = new File(mcDir, "versions");
+
+    new Thread(() -> {
+      try {
+        // Скачиваем ZIP
+        try (InputStream in = new URL(downloadUrl).openStream()) {
+          Files.copy(in, zipFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+
+        // Распаковываем
+        unzip(zipFile, versionsDir);
+        zipFile.delete();
+
+        Platform.runLater(() -> {
+          updateActionButton(version);
+          showInfo("Установка GTNH", "Сборка установлена: " + version);
+        });
+      } catch (IOException e) {
+        Platform.runLater(() -> showError("Ошибка установки GTNH: " + e.getMessage()));
+      } finally {
+        Platform.runLater(() -> {
+          actionButton.setDisable(false);
+          progressBar.setVisible(false);
+          progressLabel.setVisible(false);
         });
       }
     }).start();
@@ -227,6 +300,55 @@ public class LauncherController {
       e.printStackTrace();
       showError("Не удалось запустить Minecraft: " + e.getMessage());
     }
+  }
+
+  private void loadGtnhBuilds() {
+    new Thread(() -> {
+      try {
+        List<String> allVersions = downloadVersionList();
+        List<String> filtered = filterByType(allVersions);
+
+        Platform.runLater(() -> {
+          gtnhSelector.getItems().setAll(filtered);
+          gtnhSelector.getSelectionModel().selectFirst();
+        });
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
+    }).start();
+  }
+
+  private List<String> downloadVersionList() throws IOException {
+    List<String> versions = new ArrayList<>();
+    URL url = new URL(GTNH_DOWNLOAD_LIST);
+    try (BufferedReader reader = new BufferedReader(new InputStreamReader(url.openStream()))) {
+      String line;
+      while ((line = reader.readLine()) != null) {
+        if (line.endsWith(".zip")) {
+          versions.add(line);
+        }
+      }
+    }
+    return versions;
+  }
+
+  private List<String> filterByType(List<String> allVersions) {
+    List<String> result = new ArrayList<>();
+    for (String version : allVersions) {
+      boolean isRelease = version.toLowerCase().contains("release");
+      boolean isBeta = version.toLowerCase().contains("beta");
+
+      if ((releaseCheckBox.isSelected() && isRelease) ||
+          (betaCheckBox.isSelected() && isBeta) ||
+          (!isRelease && !isBeta)) {
+        result.add(version);
+      }
+    }
+    return result;
+  }
+
+  private boolean isGtnh(String versionName) {
+    return versionName.toLowerCase().contains("gtnh") || versionName.toLowerCase().contains("newhorizons");
   }
 
   private void showAlert(String title, String message) {

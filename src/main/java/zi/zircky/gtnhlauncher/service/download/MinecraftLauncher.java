@@ -2,8 +2,7 @@ package zi.zircky.gtnhlauncher.service.download;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 public class MinecraftLauncher {
   public static void launch(File javaPath, int ramGb, String username, File gameDir, String version) throws IOException {
@@ -23,9 +22,14 @@ public class MinecraftLauncher {
     command.add("-cp");
 
     // classpath: libraries + jar
-    StringBuilder classpath = new StringBuilder();
-    appendLibraries(librariesDir, classpath);
-    classpath.append(File.pathSeparator).append(minecraftJar.getAbsolutePath());
+    Set<String> classpathEntries = new HashSet<>();
+    appendLibraries(librariesDir, classpathEntries);
+    classpathEntries.add(minecraftJar.getAbsolutePath());
+
+    String classpath = String.join(File.pathSeparator, classpathEntries);
+    command.add("-cp");
+    command.add(classpath);
+
     command.add(classpath.toString());
 
     command.add("net.minecraft.client.main.Main");
@@ -45,17 +49,13 @@ public class MinecraftLauncher {
         .start();
   }
 
-  private static void appendLibraries(File librariesDir, StringBuilder classpath) {
-    if (!librariesDir.exists()) return;
-
-    File[] files = librariesDir.listFiles();
-    if (files == null) return;
-
-    for (File file : files) {
+  private static void appendLibraries(File librariesDir, Set<String> classpathEntries) {
+    if (librariesDir == null || !librariesDir.exists()) return;
+    for (File file : Objects.requireNonNull(librariesDir.listFiles())) {
       if (file.isDirectory()) {
-        appendLibraries(file, classpath);
+        appendLibraries(file, classpathEntries);
       } else if (file.getName().endsWith(".jar")) {
-        classpath.append(file.getAbsolutePath()).append(File.pathSeparator);
+        classpathEntries.add(file.getAbsolutePath());
       }
     }
   }

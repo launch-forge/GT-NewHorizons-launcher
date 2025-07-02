@@ -5,8 +5,6 @@ import com.google.gson.*;
 import java.io.*;
 import java.net.URL;
 import java.net.URLConnection;
-import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
 import java.util.Map;
 
 public class MojangInstaller {
@@ -30,7 +28,7 @@ public class MojangInstaller {
 
     // 2. Скачать версию
     JsonObject versionJson = readJsonFromUrl(versionMetaUrl).getAsJsonObject();
-    String mainClass = versionJson.get("mainClass").getAsString();
+
 
     // 3. Скачать клиент jar
     JsonObject downloads = versionJson.get("downloads").getAsJsonObject();
