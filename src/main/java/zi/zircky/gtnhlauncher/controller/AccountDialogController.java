@@ -13,7 +13,8 @@ import java.awt.*;
 import java.net.URI;
 import java.util.logging.Logger;
 
-public class AccountDialogController {
+public class
+AccountDialogController {
   Logger logger = Logger.getLogger(getClass().getName());
 
   @FXML

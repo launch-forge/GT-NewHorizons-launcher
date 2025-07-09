@@ -11,8 +11,10 @@ module zi.zircky.gtnhlauncher {
   requires jdk.httpserver;
   requires com.google.gson;
   requires java.logging;
+  requires jdk.management;
 
   opens zi.zircky.gtnhlauncher.auth to com.google.gson;
+  opens zi.zircky.gtnhlauncher.controller.settings to com.google.gson;
 
   opens zi.zircky.gtnhlauncher to javafx.fxml;
   exports zi.zircky.gtnhlauncher;
