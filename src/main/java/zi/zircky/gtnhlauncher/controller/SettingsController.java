@@ -2,15 +2,25 @@ package zi.zircky.gtnhlauncher.controller;
 
 import com.sun.management.OperatingSystemMXBean;
 import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
+import javafx.scene.Parent;
+import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.stage.FileChooser;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
+import zi.zircky.gtnhlauncher.LauncherApplication;
 import zi.zircky.gtnhlauncher.controller.settings.LauncherSettings;
+import zi.zircky.gtnhlauncher.controller.versionJava.JavaDetector;
+import zi.zircky.gtnhlauncher.controller.versionJava.JavaInstallation;
+import zi.zircky.gtnhlauncher.controller.versionJava.JavaSelectController;
 
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.management.ManagementFactory;
+import java.util.List;
 
 public class SettingsController {
   @FXML
@@ -19,6 +29,13 @@ public class SettingsController {
   private Label ramLabel;
   @FXML
   private TextField javaPathField;
+  @FXML
+  private RadioButton java8Radio;
+  @FXML
+  private RadioButton java17Radio;
+  @FXML
+  private Button detectJavaButton;
+
 
   private LauncherSettings settings;
 
@@ -27,6 +44,10 @@ public class SettingsController {
     settings = LauncherSettings.load();
     int systemMax = getMaxAllowedRam();
     int maxRecommended = Math.max(2, systemMax - 2); // 2 ГБ оставим для системы
+
+    ToggleGroup javaGroup = new ToggleGroup();
+    java8Radio.setToggleGroup(javaGroup);
+    java17Radio.setToggleGroup(javaGroup);
 
     ramSlider.setMax(maxRecommended);
     ramSlider.setValue(Math.min(settings.getAllocatedRam(), maxRecommended));
@@ -59,6 +80,13 @@ public class SettingsController {
         Tooltip.install(javaPathField, new Tooltip("Ошибка: недопустимый путь к Java."));
       }
     });
+
+    javaGroup.selectedToggleProperty().addListener((obs, old, selected) -> {
+      updateJavaUI();
+    });
+
+    updateJavaUI();
+
   }
 
   @FXML
@@ -69,6 +97,7 @@ public class SettingsController {
     if (file != null) {
       javaPathField.setText(file.getAbsolutePath());
     }
+    assert file != null;
     if (isValidJavaPath(file.getAbsolutePath())) {
       javaPathField.setText(file.getAbsolutePath());
     } else {
@@ -77,6 +106,33 @@ public class SettingsController {
       alert.setHeaderText("Неверный путь к Java");
       alert.setContentText("Выбранный файл не является допустимой исполняемой Java.");
       alert.showAndWait();
+    }
+  }
+
+  @FXML
+  private void onDetectJava() {
+    List<JavaInstallation> found = JavaDetector.findInstalledJava();
+    try {
+      FXMLLoader loader = new FXMLLoader(LauncherApplication.class.getResource("java-select-window.fxml"));
+      Parent root = loader.load();
+
+      JavaSelectController javaSelectController = loader.getController();
+      javaSelectController.setJavaList(found);
+
+      Stage stage = new Stage();
+      stage.setTitle("Выбор Java");
+      stage.setScene(new Scene(root));
+      stage.initModality(Modality.APPLICATION_MODAL);
+      stage.showAndWait();
+
+      JavaInstallation javaInstallation = javaSelectController.getSelectedJava();
+      if (javaInstallation != null) {
+        javaPathField.setText(javaInstallation.getPath());
+      }
+
+    } catch (IOException e) {
+      e.printStackTrace();
+      showError("Ошибка при открытии окна выбора Java: " + e.getMessage());
     }
   }
 
@@ -118,4 +174,19 @@ public class SettingsController {
       return 8; // fallback
     }
   }
+
+  private void updateJavaUI() {
+    boolean isJava8 = java8Radio.isSelected();
+    javaPathField.setVisible(isJava8);
+    detectJavaButton.setVisible(isJava8);
+  }
+
+  private void showError(String message) {
+    Alert alert = new Alert(Alert.AlertType.ERROR);
+    alert.setTitle("Ошибка");
+    alert.setHeaderText(null);
+    alert.setContentText(message);
+    alert.showAndWait();
+  }
+
 }
