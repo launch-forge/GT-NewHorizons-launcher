@@ -54,6 +54,12 @@ public class SettingsController {
     javaPathField.setText(settings.getJavaPath());
     ramLabel.setText((int) ramSlider.getValue() + " ГБ");
 
+    if (settings.getVersionJava() == 8) {
+      java8Radio.setSelected(true);
+    } else {
+      java17Radio.setSelected(true);
+    }
+
     ramSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
       int value = newVal.intValue();
       ramLabel.setText(value + " ГБ");
@@ -82,10 +88,12 @@ public class SettingsController {
     });
 
     javaGroup.selectedToggleProperty().addListener((obs, old, selected) -> {
-      updateJavaUI();
+      settings.setVersionJava(java8Radio.isSelected() ? 8 : 17);
+      settings.save();
+//      updateJavaUI();
     });
 
-    updateJavaUI();
+//    updateJavaUI();
 
   }
 
