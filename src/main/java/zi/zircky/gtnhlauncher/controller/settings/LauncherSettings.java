@@ -15,6 +15,7 @@ public class LauncherSettings {
 
   private String javaPath;
   private int allocatedRam;
+  private int versionJava;
 
   public static LauncherSettings load() {
     if (Files.exists(CONFIG_PATH)) {
@@ -28,6 +29,7 @@ public class LauncherSettings {
     LauncherSettings defaults = new LauncherSettings();
     defaults.javaPath = "";
     defaults.allocatedRam = 4;
+    defaults.versionJava = 8;
     return defaults;
   }
 
@@ -45,4 +47,12 @@ public class LauncherSettings {
 
   public int getAllocatedRam() { return allocatedRam; }
   public void setAllocatedRam(int allocatedRam) { this.allocatedRam = allocatedRam; }
+
+  public int getVersionJava() {
+    return versionJava;
+  }
+
+  public void setVersionJava(int versionJava) {
+    this.versionJava = versionJava;
+  }
 }
