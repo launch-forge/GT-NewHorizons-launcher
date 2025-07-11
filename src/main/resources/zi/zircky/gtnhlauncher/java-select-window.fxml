@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<BorderPane style="-fx-background-color: #2b2b3d;" xmlns="http://javafx.com/javafx/23.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="zi.zircky.gtnhlauncher.controller.versionJava.JavaSelectController">
+   <center>
+      <TableView fx:id="javaTable" minHeight="229.0" minWidth="282.0" style="-fx-background-color: #2b2b3d;" BorderPane.alignment="CENTER">
+        <columns>
+          <TableColumn fx:id="versionColumn" prefWidth="107.0" text="Версия" />
+            <TableColumn fx:id="pathColumn" minWidth="-1.0" prefWidth="174.0" text="Путь" />
+        </columns>
+      </TableView>
+   </center>
+   <bottom>
+      <HBox alignment="CENTER_RIGHT" BorderPane.alignment="CENTER">
+         <children>
+            <Button mnemonicParsing="false" onAction="#onSelect" text="Выбрать" />
+            <Button mnemonicParsing="false" onAction="#onCancel" text="Отмена" />
+         </children>
+      </HBox>
+   </bottom>
+</BorderPane>
