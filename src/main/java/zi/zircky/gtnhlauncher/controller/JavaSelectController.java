@@ -1,4 +1,4 @@
-package zi.zircky.gtnhlauncher.controller.versionJava;
+package zi.zircky.gtnhlauncher.controller;
 
 import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
@@ -7,6 +7,8 @@ import javafx.scene.control.Label;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.stage.Stage;
+import zi.zircky.gtnhlauncher.service.versionJava.JavaFullScanner;
+import zi.zircky.gtnhlauncher.service.versionJava.JavaInstallation;
 
 import java.io.File;
 import java.util.List;
@@ -31,7 +33,7 @@ public class JavaSelectController {
     javaScanStatus.setVisible(true);
     javaScanStatus.setText("\uD83D\uDD0D Идёт поиск Java на диске C...");
 
-    JavaFullScanner javaFullScanner = new JavaFullScanner(new File("C:/"));
+    JavaFullScanner javaFullScanner = new JavaFullScanner(new File("C:/"), 4);
     javaFullScanner.scanAll(
         msg -> Platform.runLater(() -> javaScanStatus.setText(msg)),
         java -> Platform.runLater(() -> javaTable.getItems().add(java))

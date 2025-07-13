@@ -11,11 +11,11 @@ import javafx.scene.control.Label;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import zi.zircky.gtnhlauncher.LauncherApplication;
-import zi.zircky.gtnhlauncher.controller.settings.LauncherSettings;
 import zi.zircky.gtnhlauncher.gtnh.GtnhBuild;
 import zi.zircky.gtnhlauncher.service.download.MinecraftLauncher;
 import zi.zircky.gtnhlauncher.service.download.MinecraftUtils;
 import zi.zircky.gtnhlauncher.service.download.MojangInstaller;
+import zi.zircky.gtnhlauncher.service.settings.SettingsConfig;
 
 import java.awt.*;
 import java.io.*;
@@ -30,9 +30,6 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 public class LauncherController {
-
-  @FXML
-  private ComboBox<String> versionSelector;
 
   @FXML
   private ComboBox<GtnhBuild> gtnhSelector;
@@ -58,18 +55,15 @@ public class LauncherController {
   @FXML
   private CheckBox betaCheckBox;
 
+  private SettingsConfig settings;
+
   private final File mcDir = MinecraftUtils.getMinecraftDir();
   private static final String GTNH_DOWNLOAD_LIST = "https://downloads.gtnewhorizons.com/Multi_mc_downloads/?raw";
 
 
   @FXML
   protected void initialize() {
-    versionSelector.getItems().addAll("1.7.10", "1.20.1");
-    versionSelector.getSelectionModel().selectedItemProperty().addListener((obs, old, selected) -> {
-      if (selected != null) {
-        updateActionButton(selected);
-      }
-    });
+    settings = SettingsConfig.load();
 
     gtnhSelector.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, selected) -> {
       if (selected != null) updateGtnhAction(selected);
@@ -84,11 +78,18 @@ public class LauncherController {
     accountName.setText(loadAccountFromFile());
   }
 
+  public void reloadBuildList() {
+    loadGtnhBuilds();
+  }
+
   @FXML
   private void onSettingsClicked() {
     try {
       FXMLLoader loader = new FXMLLoader(LauncherApplication.class.getResource("setting-view.fxml"));
       Parent root = loader.load();
+
+      SettingsController controller = loader.getController();
+      controller.setLauncherController(this);
 
       Stage stage = new Stage();
       stage.setTitle("Настройки лаунчера");
@@ -144,7 +145,7 @@ public class LauncherController {
 
   @FXML
   private void onLaunch() {
-    String version = versionSelector.getValue(); // или gtnhVersionSelector
+    String version = "1.17.10"; // или gtnhVersionSelector
     GtnhBuild zip = gtnhSelector.getValue();
     if (version == null || version.isEmpty() && zip == null) {
       showError("Выберите версию Minecraft или GTNH.");
@@ -178,21 +179,6 @@ public class LauncherController {
     File jar = new File(dir, versionName + ".jar");
 
     actionButton.setText(jar.exists() ? "Запустить" : "Установить");
-  }
-
-  // Проверка: установлена ли версия
-  private boolean isVersionInstalled(String versionId) {
-    File versionDir = new File(mcDir, "versions/" + versionId);
-    File jar = new File(versionDir, versionId + ".jar");
-    return jar.exists();
-  }
-
-  private void saveAccountToFile(String name) {
-    try (FileWriter writer = new FileWriter("account.txt")) {
-      writer.write(name);
-    } catch (IOException e) {
-      e.printStackTrace();
-    }
   }
 
   private String loadAccountFromFile() {
@@ -318,8 +304,8 @@ public class LauncherController {
 
   private void runMinecraft(String version) {
     try {
-      File javaFile = new File(LauncherSettings.load().getJavaPath());
-      int ram = LauncherSettings.load().getAllocatedRam();
+      File javaFile = new File(SettingsConfig.load().getJavaPath());
+      int ram = SettingsConfig.load().getAllocatedRam();
       String username = "Player"; // Пока без авторизации
 
       MinecraftLauncher.launch(javaFile, ram, username, mcDir, version);
@@ -330,6 +316,7 @@ public class LauncherController {
   }
 
   private void loadGtnhBuilds() {
+    int javaVersion = settings.getVersionJava();
     new Thread(() -> {
       try {
         List<GtnhBuild> builds = new ArrayList<>();
@@ -344,11 +331,15 @@ public class LauncherController {
             boolean isBeta = lower.contains("beta");
             boolean isRelease = !isBeta; // всё остальное — релиз
 
-            if ((releaseCheckBox.isSelected() && isRelease)
-                || (betaCheckBox.isSelected() && isBeta)) {
+            boolean isJava8 = lower.contains("java_8");
+            boolean isJava17 = lower.matches(".*java_1[7-9].*|.*java_2[0-1].*");
+
+            boolean matchesJava = (javaVersion == 8 && isJava8) || (javaVersion == 17 && isJava17);
+
+            if (matchesJava && ((releaseCheckBox.isSelected() && isRelease)
+                || (betaCheckBox.isSelected() && isBeta))) {
               builds.add(build);
             }
-
           }
         }
 

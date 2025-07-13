@@ -1,4 +1,4 @@
-package zi.zircky.gtnhlauncher.controller.settings;
+package zi.zircky.gtnhlauncher.service.settings;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -9,7 +9,7 @@ import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-public class LauncherSettings {
+public class SettingsConfig {
   private static final Path CONFIG_PATH = Path.of("launcher_config.json");
   private static final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
@@ -17,16 +17,16 @@ public class LauncherSettings {
   private int allocatedRam;
   private int versionJava;
 
-  public static LauncherSettings load() {
+  public static SettingsConfig load() {
     if (Files.exists(CONFIG_PATH)) {
       try (Reader reader = Files.newBufferedReader(CONFIG_PATH)) {
-        return gson.fromJson(reader, LauncherSettings.class);
+        return gson.fromJson(reader, SettingsConfig.class);
       } catch (IOException e) {
         e.printStackTrace();
       }
     }
     // значения по умолчанию
-    LauncherSettings defaults = new LauncherSettings();
+    SettingsConfig defaults = new SettingsConfig();
     defaults.javaPath = "";
     defaults.allocatedRam = 4;
     defaults.versionJava = 8;

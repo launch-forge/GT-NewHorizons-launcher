@@ -1,4 +1,4 @@
-package zi.zircky.gtnhlauncher.controller.versionJava;
+package zi.zircky.gtnhlauncher.service.versionJava;
 
 import java.io.BufferedReader;
 import java.io.File;

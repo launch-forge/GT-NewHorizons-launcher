@@ -14,12 +14,12 @@ module zi.zircky.gtnhlauncher {
   requires jdk.management;
 
   opens zi.zircky.gtnhlauncher.auth to com.google.gson;
-  opens zi.zircky.gtnhlauncher.controller.settings to com.google.gson;
+  opens zi.zircky.gtnhlauncher.service.settings to com.google.gson;
 
   opens zi.zircky.gtnhlauncher to javafx.fxml;
   exports zi.zircky.gtnhlauncher;
   exports zi.zircky.gtnhlauncher.controller;
   opens zi.zircky.gtnhlauncher.controller to javafx.fxml;
-  exports zi.zircky.gtnhlauncher.controller.versionJava;
-  opens zi.zircky.gtnhlauncher.controller.versionJava to javafx.fxml;
+  exports zi.zircky.gtnhlauncher.service.versionJava;
+  opens zi.zircky.gtnhlauncher.service.versionJava to javafx.fxml;
 }

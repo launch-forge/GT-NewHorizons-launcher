@@ -10,10 +10,9 @@ import javafx.stage.FileChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import zi.zircky.gtnhlauncher.LauncherApplication;
-import zi.zircky.gtnhlauncher.controller.settings.LauncherSettings;
-import zi.zircky.gtnhlauncher.controller.versionJava.JavaDetector;
-import zi.zircky.gtnhlauncher.controller.versionJava.JavaInstallation;
-import zi.zircky.gtnhlauncher.controller.versionJava.JavaSelectController;
+import zi.zircky.gtnhlauncher.service.settings.SettingsConfig;
+import zi.zircky.gtnhlauncher.service.versionJava.JavaDetector;
+import zi.zircky.gtnhlauncher.service.versionJava.JavaInstallation;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -36,12 +35,13 @@ public class SettingsController {
   @FXML
   private Button detectJavaButton;
 
+  private SettingsConfig settings;
+  private LauncherController launcherController;
 
-  private LauncherSettings settings;
 
   @FXML
   public void initialize() {
-    settings = LauncherSettings.load();
+    settings = SettingsConfig.load();
     int systemMax = getMaxAllowedRam();
     int maxRecommended = Math.max(2, systemMax - 2); // 2 ГБ оставим для системы
 
@@ -90,11 +90,13 @@ public class SettingsController {
     javaGroup.selectedToggleProperty().addListener((obs, old, selected) -> {
       settings.setVersionJava(java8Radio.isSelected() ? 8 : 17);
       settings.save();
-//      updateJavaUI();
     });
 
-//    updateJavaUI();
 
+  }
+
+  public void setLauncherController(LauncherController launcherController) {
+    this.launcherController = launcherController;
   }
 
   @FXML
@@ -181,12 +183,6 @@ public class SettingsController {
     } catch (Exception e) {
       return 8; // fallback
     }
-  }
-
-  private void updateJavaUI() {
-    boolean isJava8 = java8Radio.isSelected();
-    javaPathField.setVisible(isJava8);
-    detectJavaButton.setVisible(isJava8);
   }
 
   private void showError(String message) {
