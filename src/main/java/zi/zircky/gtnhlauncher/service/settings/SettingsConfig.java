@@ -55,4 +55,8 @@ public class SettingsConfig {
   public void setVersionJava(int versionJava) {
     this.versionJava = versionJava;
   }
+
+  public boolean isVersionJava(){
+    return versionJava != 8;
+  }
 }

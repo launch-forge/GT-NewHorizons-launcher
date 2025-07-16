@@ -7,11 +7,15 @@ import javafx.scene.control.Label;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.stage.Stage;
-import zi.zircky.gtnhlauncher.service.versionJava.JavaFullScanner;
 import zi.zircky.gtnhlauncher.service.versionJava.JavaInstallation;
+import zi.zircky.gtnhlauncher.service.versionJava.JavaScannerTask;
 
 import java.io.File;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ForkJoinPool;
+import java.util.function.Consumer;
 
 public class JavaSelectController {
   @FXML
@@ -33,11 +37,7 @@ public class JavaSelectController {
     javaScanStatus.setVisible(true);
     javaScanStatus.setText("\uD83D\uDD0D Идёт поиск Java на диске C...");
 
-    JavaFullScanner javaFullScanner = new JavaFullScanner(new File("C:/"), 4);
-    javaFullScanner.scanAll(
-        msg -> Platform.runLater(() -> javaScanStatus.setText(msg)),
-        java -> Platform.runLater(() -> javaTable.getItems().add(java))
-    );
+    startJavaScan();
   }
 
   public void setJavaList(List<JavaInstallation> javaList) {
@@ -62,4 +62,27 @@ public class JavaSelectController {
     ((Stage) javaTable.getScene().getWindow()).close();
   }
 
+  private void startJavaScan() {
+    Set<String> seenPaths = ConcurrentHashMap.newKeySet();
+    Consumer<String> onUpdata = msg -> Platform.runLater(() -> javaScanStatus.setText(msg));
+    Consumer<JavaInstallation> onFound = java -> Platform.runLater(() -> javaTable.getItems().add(java));
+
+    ForkJoinPool.commonPool().submit(() -> {
+      File root = new File("C:\\Program Files");
+      long startTime = System.nanoTime();
+
+      JavaScannerTask task = new JavaScannerTask(root, 0, 4, seenPaths, onUpdata, onFound, root);
+      List<JavaInstallation> result = task.invoke();
+
+      long endTime = System.nanoTime();   // ⏱️ Время окончания
+      long durationMillis = (endTime - startTime) / 1_000_000;
+      double durationSeconds = durationMillis / 1000.0;
+
+      String timeInfo = String.format("✅ Поиск завершён за %.2f сек. Найдено: %d", durationSeconds, result.size());
+
+      System.out.println("[INFO] " + timeInfo); // лог в консоль
+
+      Platform.runLater(() -> javaScanStatus.setText(timeInfo));
+    });
+  }
 }

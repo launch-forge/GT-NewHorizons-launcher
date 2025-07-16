@@ -1,5 +1,6 @@
 package zi.zircky.gtnhlauncher.controller;
 
+import com.google.gson.Gson;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
@@ -11,10 +12,11 @@ import javafx.scene.control.Label;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import zi.zircky.gtnhlauncher.LauncherApplication;
-import zi.zircky.gtnhlauncher.gtnh.GtnhBuild;
 import zi.zircky.gtnhlauncher.service.download.MinecraftLauncher;
 import zi.zircky.gtnhlauncher.service.download.MinecraftUtils;
+import zi.zircky.gtnhlauncher.service.download.MmcPack;
 import zi.zircky.gtnhlauncher.service.download.MojangInstaller;
+import zi.zircky.gtnhlauncher.service.gtnh.GtnhBuild;
 import zi.zircky.gtnhlauncher.service.settings.SettingsConfig;
 
 import java.awt.*;
@@ -78,10 +80,6 @@ public class LauncherController {
     accountName.setText(loadAccountFromFile());
   }
 
-  public void reloadBuildList() {
-    loadGtnhBuilds();
-  }
-
   @FXML
   private void onSettingsClicked() {
     try {
@@ -128,7 +126,7 @@ public class LauncherController {
   @FXML
   private void onOpenFolder() {
     try {
-      Desktop.getDesktop().open(new File("m/"));
+      Desktop.getDesktop().open(new File(System.getenv("APPDATA"), "/.gtnh-launcher"));
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
@@ -145,40 +143,35 @@ public class LauncherController {
 
   @FXML
   private void onLaunch() {
-    String version = "1.17.10"; // или gtnhVersionSelector
     GtnhBuild zip = gtnhSelector.getValue();
-    if (version == null || version.isEmpty() && zip == null) {
+    if (zip == null) {
       showError("Выберите версию Minecraft или GTNH.");
       return;
     }
 
-      File jar = new File(mcDir, "versions/" + version + "/" + version + ".jar");
-      if (jar.exists()) {
-        runMinecraft(version);
-      } else {
-        installMinecraft(version);
-      }
+//      File jar = new File(mcDir, "versions/" + version + "/" + version + ".jar");
+//      if (jar.exists()) {
+//        runMinecraft(version);
+//      } else {
+//        installMinecraft(version);
+//      }
 
       String modpack = zip.nameToShow;
-      File jarGtnh = new File(mcDir, "versions/" + modpack + "/" + modpack + ".jar");
-      if (jarGtnh.exists()) {
+      if (isGTNHInstalled()) {
         runMinecraft(modpack);
       } else {
         installGtnhBuild(zip);
       }
   }
-
   private void updateActionButton(String versionId) {
     File jar = new File(mcDir, "versions/" + versionId + "/" + versionId + ".jar");
     actionButton.setText(jar.exists() ? "Запустить" : "Установить");
   }
 
+
   private void updateGtnhAction(GtnhBuild zipName) {
     String versionName = zipName.nameToShow;
-    File dir = new File(mcDir, "versions/" + versionName);
-    File jar = new File(dir, versionName + ".jar");
-
-    actionButton.setText(jar.exists() ? "Запустить" : "Установить");
+    actionButton.setText(isGTNHInstalled() ? "Запустить" : "Установить");
   }
 
   private String loadAccountFromFile() {
@@ -206,7 +199,7 @@ public class LauncherController {
         MojangInstaller.installVersion(version, mcDir, (progress, message) -> {
           Platform.runLater(() -> {
             progressBar.setProgress(progress);
-            progressBarLabel.setText((int) (progress * 100) + "% • " + message);
+            progressBarLabel.setText((int)(progress * 100) + "% • " + message);
           });
         });
 
@@ -224,8 +217,7 @@ public class LauncherController {
           new Thread(() -> {
             try {
               Thread.sleep(2000);
-            } catch (InterruptedException ignored) {
-            }
+            } catch (InterruptedException ignored) {}
             Platform.runLater(() -> {
               progressBar.setVisible(false);
               progressBarLabel.setVisible(false);
@@ -240,23 +232,22 @@ public class LauncherController {
     String versionId = build.nameToShow;
     String downloadUrl = build.downloadUrl;
     File zipFile = new File("gtnh_temp.zip");
-    File versionsDir = new File(mcDir, "versions");
+    File versionsDir = new File(mcDir.toURI());
 
     actionButton.setDisable(true);
     progressBar.setVisible(true);
-    progressLabel.setVisible(true);
+    progressBarLabel.setVisible(true);
     progressBar.setProgress(0);
-    progressLabel.setText("Скачиваем GTNH...");
+    progressBarLabel.setText("Скачиваем GTNH...");
+
     new Thread(() -> {
       try {
-        // ========== ШАГ 1. СКАЧИВАНИЕ ==========
         URL url = new URL(downloadUrl);
         URLConnection connection = url.openConnection();
         int contentLength = connection.getContentLength();
 
         try (InputStream in = connection.getInputStream();
              FileOutputStream out = new FileOutputStream(zipFile)) {
-
           byte[] buffer = new byte[4096];
           int bytesRead;
           int totalRead = 0;
@@ -268,28 +259,53 @@ public class LauncherController {
             final double progress = (double) totalRead / contentLength;
             Platform.runLater(() -> {
               progressBar.setProgress(progress);
-              progressLabel.setText("Скачивание: " + (int)(progress * 100) + "%");
+              progressBarLabel.setText("Скачивание: " + (int)(progress * 100) + "%");
             });
           }
         }
 
-        // ========== ШАГ 2. РАСПАКОВКА ==========
-        Platform.runLater(() -> progressLabel.setText("Распаковка..."));
+        Platform.runLater(() -> progressBarLabel.setText("Распаковка..."));
         unzipWithProgress(zipFile, versionsDir);
-
-        // ========== ШАГ 3. ГОТОВО ==========
         zipFile.delete();
+
         Platform.runLater(() -> {
           updateGtnhAction(build);
           showInfo("GTNH установлена", "Сборка " + versionId + " установлена.");
         });
 
+        File mmcPackFile = new File(mcDir, ".minecraft/mmc-pack.json");
+        String mcVersion = "1.7.10";
+
+        if (mmcPackFile.exists()) {
+          MmcPack mmcPack = parseMmcPack(mmcPackFile);
+          if (mmcPack != null) {
+            String parsedVersion = mmcPack.getMinecraftVersion();
+            if (parsedVersion != null) {
+              mcVersion = parsedVersion;
+            }
+          }
+        }
+
+        Thread.sleep(1000);
+        Platform.runLater(() -> {
+          try {
+            File javaFile = new File(SettingsConfig.load().getJavaPath());
+            int ram = SettingsConfig.load().getAllocatedRam();
+            String username = accountName.getText();
+            MinecraftLauncher.launch(javaFile, ram, username, mcDir, "1.7.10", SettingsConfig.load().isVersionJava());
+          } catch (Exception e) {
+            e.printStackTrace();
+            showError("Не удалось запустить Minecraft после установки: " + e.getMessage());
+          }
+        });
+
       } catch (IOException e) {
         Platform.runLater(() -> showError("Ошибка установки GTNH: " + e.getMessage()));
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
       } finally {
         Platform.runLater(() -> {
           actionButton.setDisable(false);
-          // скрываем через 2 секунды
           new Thread(() -> {
             try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
             Platform.runLater(() -> {
@@ -306,9 +322,9 @@ public class LauncherController {
     try {
       File javaFile = new File(SettingsConfig.load().getJavaPath());
       int ram = SettingsConfig.load().getAllocatedRam();
-      String username = "Player"; // Пока без авторизации
-
-      MinecraftLauncher.launch(javaFile, ram, username, mcDir, version);
+      String username = "Player";
+      System.out.println("runMine: " + version);
+      MinecraftLauncher.launch(javaFile, ram, username, mcDir, version, SettingsConfig.load().isVersionJava());
     } catch (Exception e) {
       e.printStackTrace();
       showError("Не удалось запустить Minecraft: " + e.getMessage());
@@ -332,7 +348,7 @@ public class LauncherController {
             boolean isRelease = !isBeta; // всё остальное — релиз
 
             boolean isJava8 = lower.contains("java_8");
-            boolean isJava17 = lower.matches(".*java_1[7-9].*|.*java_2[0-1].*");
+            boolean isJava17 = lower.matches(".*java_1[7-9].*|.*java_2[0-9].*");
 
             boolean matchesJava = (javaVersion == 8 && isJava8) || (javaVersion == 17 && isJava17);
 
@@ -354,6 +370,8 @@ public class LauncherController {
   }
 
   private void unzipWithProgress(File zipFile, File outputDir) throws IOException {
+    List<String> allowedTopLevelDirs = List.of(".minecraft", "libraries", "patches", "gtnh_icon.png", "instance.cfg", "mmc-pack.json");
+
     // Подсчёт общего количества записей (для прогресса)
     int entryCount = 0;
     try (ZipInputStream zis = new ZipInputStream(new FileInputStream(zipFile))) {
@@ -365,28 +383,63 @@ public class LauncherController {
     try (ZipInputStream zis = new ZipInputStream(new FileInputStream(zipFile))) {
       ZipEntry entry;
       while ((entry = zis.getNextEntry()) != null) {
-        File newFile = new File(outputDir, entry.getName());
+        String normalizedName = normalizeEntryName(entry.getName());
+        if (!isAllowed(normalizedName, allowedTopLevelDirs)) continue;
+
+        File outFile = new File(outputDir, normalizedName);
 
         if (entry.isDirectory()) {
-          newFile.mkdirs();
+          outFile.mkdirs();
         } else {
-          newFile.getParentFile().mkdirs();
-          try (FileOutputStream fos = new FileOutputStream(newFile)) {
+          outFile.getParentFile().mkdirs();
+          try (FileOutputStream fos = new FileOutputStream(outFile)) {
             zis.transferTo(fos);
           }
         }
 
         currentEntry++;
         final double progress = (double) currentEntry / entryCount;
-        final String name = entry.getName();
+        final String displayName = normalizedName;
 
         Platform.runLater(() -> {
           progressBar.setProgress(progress);
-          progressLabel.setText("Распаковка: " + (int)(progress * 100) + "% • " + name);
+          progressBarLabel.setText("Распаковка: " + (int)(progress * 100) + "% • " + displayName);
         });
 
         zis.closeEntry();
       }
+    }
+  }
+
+  private boolean isAllowed(String entryName, List<String> allowed) {
+    for (String allowedPrefix : allowed) {
+      if (entryName.startsWith(allowedPrefix)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private String normalizeEntryName(String name) {
+    int firstSlash = name.indexOf('/');
+    if (firstSlash != 1 && name.length() > firstSlash + 1) {
+      return name.substring(firstSlash + 1);
+    }
+    return name;
+  }
+
+  private boolean isGTNHInstalled() {
+    System.out.println(mcDir);
+    return new File(mcDir, ".minecraft/config").exists() && new File(mcDir, ".minecraft/mods").exists();
+  }
+
+  private MmcPack parseMmcPack(File jsonFile) {
+    try (FileReader reader = new FileReader(jsonFile)) {
+      return new Gson().fromJson(reader, MmcPack.class);
+    } catch (IOException e) {
+      e.printStackTrace();
+      return null;
     }
   }
 
