@@ -1,4 +1,4 @@
-package zi.zircky.gtnhlauncher.gtnh;
+package zi.zircky.gtnhlauncher.service.gtnh;
 
 public class GtnhBuild {
   public final String nameToShow;
@@ -7,7 +7,7 @@ public class GtnhBuild {
 
   public GtnhBuild(String zipFilename) {
     this.zipFilename = zipFilename;
-    this.downloadUrl = "https://downloads.gtnewhorizons.com/Multi_mc_downloads/" + zipFilename;
+    this.downloadUrl = zipFilename;
 
     // Например: GT_New_Horizons_Release_2.4.0.zip, GT_New_Horizons_2.7.0_Java_17-21.zip → GTNH_2.4.0
     this.nameToShow = "GTNH " + zipFilename

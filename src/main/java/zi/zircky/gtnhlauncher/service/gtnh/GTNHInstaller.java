@@ -1,4 +1,4 @@
-package zi.zircky.gtnhlauncher.gtnh;
+package zi.zircky.gtnhlauncher.service.gtnh;
 
 import java.io.File;
 import java.io.IOException;
