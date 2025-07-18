@@ -7,8 +7,8 @@ import javafx.scene.control.Label;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.stage.Stage;
-import zi.zircky.gtnhlauncher.service.versionJava.JavaInstallation;
-import zi.zircky.gtnhlauncher.service.versionJava.JavaScannerTask;
+import zi.zircky.gtnhlauncher.service.settings.versionJava.JavaInstallation;
+import zi.zircky.gtnhlauncher.service.settings.versionJava.JavaScannerTask;
 
 import java.io.File;
 import java.util.List;

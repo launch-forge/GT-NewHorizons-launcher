@@ -11,8 +11,8 @@ import javafx.stage.Modality;
 import javafx.stage.Stage;
 import zi.zircky.gtnhlauncher.LauncherApplication;
 import zi.zircky.gtnhlauncher.service.settings.SettingsConfig;
-import zi.zircky.gtnhlauncher.service.versionJava.JavaDetector;
-import zi.zircky.gtnhlauncher.service.versionJava.JavaInstallation;
+import zi.zircky.gtnhlauncher.service.settings.versionJava.JavaDetector;
+import zi.zircky.gtnhlauncher.service.settings.versionJava.JavaInstallation;
 
 import java.io.BufferedReader;
 import java.io.File;
