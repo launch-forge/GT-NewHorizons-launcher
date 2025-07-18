@@ -20,6 +20,6 @@ module zi.zircky.gtnhlauncher {
   exports zi.zircky.gtnhlauncher;
   exports zi.zircky.gtnhlauncher.controller;
   opens zi.zircky.gtnhlauncher.controller to javafx.fxml;
-  exports zi.zircky.gtnhlauncher.service.versionJava;
-  opens zi.zircky.gtnhlauncher.service.versionJava to javafx.fxml;
+  exports zi.zircky.gtnhlauncher.service.settings.versionJava;
+  opens zi.zircky.gtnhlauncher.service.settings.versionJava to javafx.fxml;
 }

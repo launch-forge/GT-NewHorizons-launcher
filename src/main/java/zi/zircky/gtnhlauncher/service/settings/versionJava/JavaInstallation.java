@@ -1,4 +1,4 @@
-package zi.zircky.gtnhlauncher.service.versionJava;
+package zi.zircky.gtnhlauncher.service.settings.versionJava;
 
 public class JavaInstallation {
   private final String version;
