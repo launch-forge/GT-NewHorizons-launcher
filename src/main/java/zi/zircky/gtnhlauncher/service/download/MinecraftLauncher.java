@@ -6,10 +6,19 @@ import com.google.gson.JsonObject;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.*;
 
 public class MinecraftLauncher {
-  public static void launch(File javaPath, int ramGb, String username, File gameDir, String version, boolean useJava17Plus) throws IOException, InterruptedException {
+
+  private static final File logFile = new File("launcher.log");
+
+  public static void launch(File javaPath, int ramGb, String username, File gameDir, boolean useJava17Plus) throws IOException, InterruptedException {
+    try (FileWriter fw = new FileWriter(logFile, false)) {
+      fw.write(""); // очистить лог
+    }
+    log("=== Запуск Minecraft ===");
+
     File minecraftDir = new File(gameDir, ".minecraft");
     if (!minecraftDir.exists()) {
       minecraftDir = gameDir;
@@ -18,38 +27,47 @@ public class MinecraftLauncher {
     File mmcPackFile = new File(gameDir, "mmc-pack.json");
     String minecraftVersion = "1.7.10";
     String forgeVersion = "10.13.4.1614";
+
     if (mmcPackFile.exists() && mmcPackFile.isFile()) {
       try (InputStreamReader reader = new InputStreamReader(new FileInputStream(mmcPackFile), StandardCharsets.UTF_8)) {
         Gson gson = new Gson();
-        JsonObject mmcPack = gson.fromJson(new FileReader(mmcPackFile), JsonObject.class);
-        if (mmcPack != null && mmcPack.has("ccomponents")) {
-          JsonArray components = mmcPack.getAsJsonArray("ccomponents");
-          if (components != null) {
-            for (int i = 0; i < components.size(); i++) {
-              JsonObject component = components.get(i).getAsJsonObject();
-              if (component != null && component.has("cachedName") && component.has(version)) {
-                String name = component.get("cachedName").getAsString();
-                if (name.equals("Minecraft")) {
-                  minecraftVersion = component.get("version").getAsString();
-                } else if (name.equals("Forge")) {
-                  forgeVersion = component.get("version").getAsString();
-                }
-              }
+        JsonObject mmcPack = gson.fromJson(reader, JsonObject.class);
+        JsonArray components = mmcPack.getAsJsonArray("components");
+
+        if (components != null) {
+          for (int i = 0; i < components.size(); i++) {
+            JsonObject component = components.get(i).getAsJsonObject();
+            String name = component.has("cachedName") ? component.get("cachedName").getAsString() : "unknown";
+            String uid = component.has("uid") ? component.get("uid").getAsString() : "unknown";
+            String ver = component.has("cachedVersion") ? component.get("cachedVersion").getAsString() : "unknown";
+            log("Компонент: " + name + " | UID: " + uid + " | Версия: " + ver);
+
+            if (uid.equalsIgnoreCase("Minecraft")) {
+              minecraftVersion = ver;
+            } else if (uid.equalsIgnoreCase("net.minecraftforge")) {
+              forgeVersion = ver;
             }
-          } else {
-            System.out.println("Ошибка: Поле 'components' в mmc-pack.json равно null.");
           }
         } else {
-          System.out.println("Ошибка: Поле 'components' отсутствует в mmc-pack.json.");
+          log("❗ Поле 'components' отсутствует или null.");
         }
-      } catch (IOException | com.google.gson.JsonSyntaxException e) {
-        System.out.println("Ошибка при парсинге mmc-pack.json: " + e.getMessage());
+
+      } catch (Exception e) {
+        log("❌ Ошибка при чтении mmc-pack.json: " + e.getMessage());
       }
     } else {
-      System.out.println("Предупреждение: mmc-pack.json не найден в " + mmcPackFile.getAbsolutePath() + ", используются значения по умолчанию.");
+      log("⚠️ mmc-pack.json не найден, используются значения по умолчанию.");
     }
 
+    LauncherLibraryResolver launcherLibraryResolver = new LauncherLibraryResolver();
+
     File librariesDir = new File(gameDir, "libraries");
+    try {
+      launcherLibraryResolver.runDownload(librariesDir, mmcPackFile);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+
     File nativesDir = new File(minecraftDir, "versions/" + minecraftVersion + "/" + minecraftVersion + "-natives");
     File minecraftJar = new File(minecraftDir, "versions/" + minecraftVersion + "/" + minecraftVersion + ".jar");
 
@@ -73,9 +91,10 @@ public class MinecraftLauncher {
       if (lwjglPatch.exists()) {
         classpathEntries.add(lwjglPatch.getAbsolutePath());
       } else {
-        System.out.println("Предупреждение: lwjgl3ify-forgePatches.jar не найден в " + lwjglPatch.getAbsolutePath() + ", может потребоваться для Java 17+.");
+        log("⚠️ lwjgl3ify-forgePatches.jar не найден.");
       }
     }
+
 
     String classpath = String.join(File.pathSeparator, classpathEntries);
 
@@ -102,7 +121,6 @@ public class MinecraftLauncher {
     command.add("-cp");
     command.add(classpath);
 
-    // Основной класс
     command.add(useJava17Plus ? "cpw.mods.fml.common.launcher.FMLTweaker" : "net.minecraft.launchwrapper.Launch");
 
     // Аргументы Minecraft
@@ -117,17 +135,17 @@ public class MinecraftLauncher {
     command.add("--tweakClass");
     command.add(useJava17Plus ? "org.spongepowered.asm.launch.MixinTweaker" : "cpw.mods.fml.common.launcher.FMLTweaker");
 
-    System.out.println("Запускаем Minecraft:");
-    System.out.println(String.join(" ", command));
+    log("Команда запуска:");
+    for (String arg : command) log("  " + arg);
 
     ProcessBuilder processBuilder = new ProcessBuilder(command);
     processBuilder.directory(gameDir);
     processBuilder.redirectErrorStream(true);
 
-    File logFile = new File(gameDir, "latest.log");
+    File mcLogFile = new File(gameDir, "latest.log");
     Process process = processBuilder.start();
 
-    try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream())); FileWriter logWriter = new FileWriter(logFile, true)) {
+    try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream())); FileWriter logWriter = new FileWriter(mcLogFile, true)) {
       String line;
       while ((line = reader.readLine()) != null) {
         System.out.println(line);
@@ -135,7 +153,7 @@ public class MinecraftLauncher {
       }
     }
     int exitCode = process.waitFor();
-    System.out.println("Minecraft завершился с кодом: " + exitCode);
+    log("=== Завершено с кодом: " + exitCode + " ===");
   }
 
   private static void appendLibraries(File librariesDir, Set<String> classpathEntries) {
@@ -146,6 +164,17 @@ public class MinecraftLauncher {
       } else if (file.getName().endsWith(".jar")) {
         classpathEntries.add(file.getAbsolutePath());
       }
+    }
+  }
+
+  private static void log(String message) {
+    String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+    String line = "[" + timestamp + "] " + message;
+    System.out.println(line);
+    try (FileWriter fw = new FileWriter(logFile, true)) {
+      fw.write(line + "\n");
+    } catch (IOException e) {
+      System.err.println("Ошибка записи в лог: " + e.getMessage());
     }
   }
 }

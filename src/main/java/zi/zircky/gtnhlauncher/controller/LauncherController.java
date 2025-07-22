@@ -12,10 +12,7 @@ import javafx.scene.control.Label;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import zi.zircky.gtnhlauncher.LauncherApplication;
-import zi.zircky.gtnhlauncher.service.download.MinecraftLauncher;
-import zi.zircky.gtnhlauncher.service.download.MinecraftUtils;
-import zi.zircky.gtnhlauncher.service.download.MmcPack;
-import zi.zircky.gtnhlauncher.service.download.MojangInstaller;
+import zi.zircky.gtnhlauncher.service.download.*;
 import zi.zircky.gtnhlauncher.service.gtnh.GtnhBuild;
 import zi.zircky.gtnhlauncher.service.settings.SettingsConfig;
 
@@ -158,7 +155,7 @@ public class LauncherController {
 
       String modpack = zip.nameToShow;
       if (isGTNHInstalled()) {
-        runMinecraft(modpack);
+        runMinecraft();
       } else {
         installGtnhBuild(zip);
       }
@@ -292,7 +289,7 @@ public class LauncherController {
             File javaFile = new File(SettingsConfig.load().getJavaPath());
             int ram = SettingsConfig.load().getAllocatedRam();
             String username = accountName.getText();
-            MinecraftLauncher.launch(javaFile, ram, username, mcDir, "1.7.10", SettingsConfig.load().isVersionJava());
+            MinecraftLauncher.launch(javaFile, ram, username, mcDir, SettingsConfig.load().isVersionJava());
           } catch (Exception e) {
             e.printStackTrace();
             showError("Не удалось запустить Minecraft после установки: " + e.getMessage());
@@ -318,13 +315,33 @@ public class LauncherController {
     }).start();
   }
 
-  private void runMinecraft(String version) {
+  private void runMinecraft() {
     try {
-      File javaFile = new File(SettingsConfig.load().getJavaPath());
-      int ram = SettingsConfig.load().getAllocatedRam();
-      String username = "Player";
-      System.out.println("runMine: " + version);
-      MinecraftLauncher.launch(javaFile, ram, username, mcDir, version, SettingsConfig.load().isVersionJava());
+      // Получаем настройки
+      SettingsConfig config = SettingsConfig.load();
+      File javaFile = new File(config.getJavaPath());
+      int ram = config.getAllocatedRam();
+      String username = "Player"; // можно заменить, если есть авторизация
+      boolean isJava17 = config.isVersionJava(); // true — если Java 17+, false — если Java 8
+      File gameDir = mcDir; // рабочая директория Minecraft
+      File mmcPackJson = new File(gameDir, "mmc-pack.json");
+      File librariesDir = new File(gameDir, "libraries");
+
+      // Парсим mmc-pack.json
+      MmcPackParser.MmcPackInfo info = MmcPackParser.parse(mmcPackJson.toString());
+      info.java17Mode = isJava17; // переопределяем на основе настроек пользователя
+
+      // Собираем ProcessBuilder
+      ProcessBuilder builder = MinecraftLaunchCommandBuilder.buildLaunchCommand(
+          info,
+          gameDir,
+          javaFile,
+          librariesDir,
+          username
+      );
+
+      // Запускаем Minecraft
+      builder.start();
     } catch (Exception e) {
       e.printStackTrace();
       showError("Не удалось запустить Minecraft: " + e.getMessage());
