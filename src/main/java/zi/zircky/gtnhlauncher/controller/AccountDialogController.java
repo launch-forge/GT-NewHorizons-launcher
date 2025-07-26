@@ -7,6 +7,7 @@ import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
 import javafx.stage.Stage;
+import zi.zircky.gtnhlauncher.auth.AuthStorage;
 import zi.zircky.gtnhlauncher.auth.MicrosoftLoginManager;
 
 import java.awt.*;
@@ -29,10 +30,13 @@ AccountDialogController {
   private MicrosoftLoginManager loginManager = new MicrosoftLoginManager();
 
   private String result = null;
+  private AuthStorage.AuthInfo auth = AuthStorage.load();
 
   public void initialize() {
-    accountTypeSelector.getItems().addAll("Offline");
-    accountTypeSelector.getSelectionModel().selectFirst();
+
+    accountTypeSelector.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, selected) -> {
+      if (selected != null) authList(selected);
+    });
   }
 
   @FXML
@@ -86,6 +90,10 @@ AccountDialogController {
     } catch (Exception e) {
       statusLabel.setText("Ошибка: " + e.getMessage());
     }
+  }
+
+  private void authList(String list) {
+    System.out.println(list);
   }
 
   public String getResult() {

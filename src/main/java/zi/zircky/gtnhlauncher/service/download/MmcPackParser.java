@@ -5,52 +5,51 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
-import java.io.FileReader;
-import java.io.IOException;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 
 public class MmcPackParser {
-  public static class MmcPackInfo {
-    public final String minecraftVersion;
-    public final String forgeVersion;
-    public boolean java17Mode;
-    public final List<String> librariesToAdd;
+  public static class Component {
+    public String uid;
+    public String version;
+    public String cachedName;
 
-    public MmcPackInfo(String minecraftVersion, String forgeVersion, boolean java17Mode, List<String> librariesToAdd) {
-      this.minecraftVersion = minecraftVersion;
-      this.forgeVersion = forgeVersion;
-      this.java17Mode = java17Mode;
-      this.librariesToAdd = librariesToAdd;
+    @Override
+    public String toString() {
+      return uid + ":" + version;
     }
   }
 
-  public static MmcPackInfo parse(String filePath) throws IOException {
-    JsonElement rootElement = JsonParser.parseReader(new FileReader(filePath));
-    JsonObject root = rootElement.getAsJsonObject();
-    JsonArray components = root.getAsJsonArray("components");
+  public static List<Component> loadComponents(File mmcPackJson) throws IOException {
+    try (Reader reader = new InputStreamReader(new FileInputStream(mmcPackJson), "UTF-8")) {
+      JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+      JsonArray comps = root.getAsJsonArray("components");
 
-    String minecraftVersion = null;
-    String forgeVersion = null;
-    boolean java17Mode = false;
-    List<String> librariesToAdd = new ArrayList<>();
+      List<Component> result = new ArrayList<>();
+      for (JsonElement el : comps) {
+        JsonObject obj = el.getAsJsonObject();
+        Component comp = new Component();
+        comp.uid = obj.get("uid").getAsString();
+        comp.version = obj.has("version") ? obj.get("version").getAsString() : "";
+        comp.cachedName = obj.has("cachedName") ? obj.get("cachedName").getAsString() : comp.uid;
+        result.add(comp);
+      }
 
-    for (JsonElement element : components) {
-      JsonObject component = element.getAsJsonObject();
-      String uid = component.get("uid").getAsString();
-      String version = component.has("version") ? component.get("version").getAsString() : null;
+      return result;
+    }
+  }
 
-      librariesToAdd.add(uid);
-
-      if ("net.minecraft".equals(uid)) {
-        minecraftVersion = version;
-      } else if ("net.minecraftforge".equals(uid)) {
-        forgeVersion = version;
-      } else if ("org.lwjgl3".equals(uid)) {
-        java17Mode = true;
+  public static List<File> resolveComponentJsonFiles(File patchesDir, List<Component> components) {
+    List<File> result = new ArrayList<>();
+    for (Component comp : components) {
+      File jsonFile = new File(patchesDir, comp.uid + ".json");
+      if (jsonFile.exists()) {
+        result.add(jsonFile);
+      } else {
+        System.err.println("[WARN] Component not found in patches: " + comp.uid);
       }
     }
-
-    return new MmcPackInfo(minecraftVersion, forgeVersion, java17Mode, librariesToAdd);
+    return result;
   }
 }
