@@ -153,6 +153,13 @@ public class MicrosoftLoginManager {
         String[] profile = getMinecraftProfile(minecraftToken);
 
         if (ownsMinecraft) {
+          AuthStorage.AuthInfo authInfo = new AuthStorage.AuthInfo();
+          authInfo.username = profile[0];
+          authInfo.uuid = profile[1];
+          authInfo.accessToken = minecraftToken;
+
+          AuthStorage.save(authInfo);
+
           onSuccess.accept(new String[]{profile[0], profile[1], minecraftToken});
         } else {
           onError.accept("Ошибка: Minecraft не куплен.");

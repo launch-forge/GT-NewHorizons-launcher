@@ -1,6 +1,5 @@
 package zi.zircky.gtnhlauncher.controller;
 
-import com.google.gson.Gson;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
@@ -12,7 +11,10 @@ import javafx.scene.control.Label;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import zi.zircky.gtnhlauncher.LauncherApplication;
-import zi.zircky.gtnhlauncher.service.download.*;
+import zi.zircky.gtnhlauncher.auth.AuthStorage;
+import zi.zircky.gtnhlauncher.service.download.MinecraftLauncher;
+import zi.zircky.gtnhlauncher.service.download.MinecraftUtils;
+import zi.zircky.gtnhlauncher.service.download.MojangInstaller;
 import zi.zircky.gtnhlauncher.service.gtnh.GtnhBuild;
 import zi.zircky.gtnhlauncher.service.settings.SettingsConfig;
 
@@ -270,41 +272,12 @@ public class LauncherController {
           showInfo("GTNH установлена", "Сборка " + versionId + " установлена.");
         });
 
-        File mmcPackFile = new File(mcDir, ".minecraft/mmc-pack.json");
-        String mcVersion = "1.7.10";
-
-        if (mmcPackFile.exists()) {
-          MmcPack mmcPack = parseMmcPack(mmcPackFile);
-          if (mmcPack != null) {
-            String parsedVersion = mmcPack.getMinecraftVersion();
-            if (parsedVersion != null) {
-              mcVersion = parsedVersion;
-            }
-          }
-        }
-
-        Thread.sleep(1000);
-        Platform.runLater(() -> {
-          try {
-            File javaFile = new File(SettingsConfig.load().getJavaPath());
-            int ram = SettingsConfig.load().getAllocatedRam();
-            String username = accountName.getText();
-            MinecraftLauncher.launch(javaFile, ram, username, mcDir, SettingsConfig.load().isVersionJava());
-          } catch (Exception e) {
-            e.printStackTrace();
-            showError("Не удалось запустить Minecraft после установки: " + e.getMessage());
-          }
-        });
-
       } catch (IOException e) {
         Platform.runLater(() -> showError("Ошибка установки GTNH: " + e.getMessage()));
-      } catch (InterruptedException e) {
-        throw new RuntimeException(e);
-      } finally {
+      }  finally {
         Platform.runLater(() -> {
           actionButton.setDisable(false);
           new Thread(() -> {
-            try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
             Platform.runLater(() -> {
               progressBar.setVisible(false);
               progressBarLabel.setVisible(false);
@@ -321,27 +294,16 @@ public class LauncherController {
       SettingsConfig config = SettingsConfig.load();
       File javaFile = new File(config.getJavaPath());
       int ram = config.getAllocatedRam();
-      String username = "Player"; // можно заменить, если есть авторизация
+      AuthStorage.AuthInfo auth = AuthStorage.load();
       boolean isJava17 = config.isVersionJava(); // true — если Java 17+, false — если Java 8
       File gameDir = mcDir; // рабочая директория Minecraft
       File mmcPackJson = new File(gameDir, "mmc-pack.json");
       File librariesDir = new File(gameDir, "libraries");
 
-      // Парсим mmc-pack.json
-      MmcPackParser.MmcPackInfo info = MmcPackParser.parse(mmcPackJson.toString());
-      info.java17Mode = isJava17; // переопределяем на основе настроек пользователя
+      ProcessBuilder builder = MinecraftLauncher.launch(javaFile, ram, gameDir, auth.username, auth.uuid, auth.accessToken);
 
-      // Собираем ProcessBuilder
-      ProcessBuilder builder = MinecraftLaunchCommandBuilder.buildLaunchCommand(
-          info,
-          gameDir,
-          javaFile,
-          librariesDir,
-          username
-      );
-
-      // Запускаем Minecraft
       builder.start();
+
     } catch (Exception e) {
       e.printStackTrace();
       showError("Не удалось запустить Minecraft: " + e.getMessage());
@@ -449,15 +411,6 @@ public class LauncherController {
   private boolean isGTNHInstalled() {
     System.out.println(mcDir);
     return new File(mcDir, ".minecraft/config").exists() && new File(mcDir, ".minecraft/mods").exists();
-  }
-
-  private MmcPack parseMmcPack(File jsonFile) {
-    try (FileReader reader = new FileReader(jsonFile)) {
-      return new Gson().fromJson(reader, MmcPack.class);
-    } catch (IOException e) {
-      e.printStackTrace();
-      return null;
-    }
   }
 
   private void showAlert(String title, String message) {

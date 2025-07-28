@@ -1,180 +1,181 @@
 package zi.zircky.gtnhlauncher.service.download;
 
-import com.google.gson.Gson;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import java.io.*;
-import java.nio.charset.StandardCharsets;
-import java.text.SimpleDateFormat;
-import java.util.*;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
+
 
 public class MinecraftLauncher {
 
-  private static final File logFile = new File("launcher.log");
+  private static final File mcDir = MinecraftUtils.getMinecraftDir();
+  private static final File mmcPack = new File(mcDir, "mmc-pack.json");
+  private static final File PATCHES_DIR = new File(mcDir, "patches");
+  private static final File LIBRARIES_DIR = new File(mcDir, "libraries");
 
-  public static void launch(File javaPath, int ramGb, String username, File gameDir, boolean useJava17Plus) throws IOException, InterruptedException {
-    try (FileWriter fw = new FileWriter(logFile, false)) {
-      fw.write(""); // очистить лог
-    }
-    log("=== Запуск Minecraft ===");
+  public static class Library {
+    String name;
+    String url;
+    String sha1;
+    long size;
+    boolean hasArtifact;
 
-    File minecraftDir = new File(gameDir, ".minecraft");
-    if (!minecraftDir.exists()) {
-      minecraftDir = gameDir;
-    }
-
-    File mmcPackFile = new File(gameDir, "mmc-pack.json");
-    String minecraftVersion = "1.7.10";
-    String forgeVersion = "10.13.4.1614";
-
-    if (mmcPackFile.exists() && mmcPackFile.isFile()) {
-      try (InputStreamReader reader = new InputStreamReader(new FileInputStream(mmcPackFile), StandardCharsets.UTF_8)) {
-        Gson gson = new Gson();
-        JsonObject mmcPack = gson.fromJson(reader, JsonObject.class);
-        JsonArray components = mmcPack.getAsJsonArray("components");
-
-        if (components != null) {
-          for (int i = 0; i < components.size(); i++) {
-            JsonObject component = components.get(i).getAsJsonObject();
-            String name = component.has("cachedName") ? component.get("cachedName").getAsString() : "unknown";
-            String uid = component.has("uid") ? component.get("uid").getAsString() : "unknown";
-            String ver = component.has("cachedVersion") ? component.get("cachedVersion").getAsString() : "unknown";
-            log("Компонент: " + name + " | UID: " + uid + " | Версия: " + ver);
-
-            if (uid.equalsIgnoreCase("Minecraft")) {
-              minecraftVersion = ver;
-            } else if (uid.equalsIgnoreCase("net.minecraftforge")) {
-              forgeVersion = ver;
-            }
-          }
-        } else {
-          log("❗ Поле 'components' отсутствует или null.");
-        }
-
-      } catch (Exception e) {
-        log("❌ Ошибка при чтении mmc-pack.json: " + e.getMessage());
-      }
-    } else {
-      log("⚠️ mmc-pack.json не найден, используются значения по умолчанию.");
+    public Library(String name, String url, String sha1, long size) {
+      this.name = name;
+      this.url = url;
+      this.sha1 = sha1;
+      this.size = size;
+      this.hasArtifact = (url != null && !url.isEmpty());
     }
 
-    LauncherLibraryResolver launcherLibraryResolver = new LauncherLibraryResolver();
-
-    File librariesDir = new File(gameDir, "libraries");
-    try {
-      launcherLibraryResolver.runDownload(librariesDir, mmcPackFile);
-    } catch (Exception e) {
-      throw new RuntimeException(e);
+    public boolean isNative() {
+      return name.contains(":natives");
     }
 
-    File nativesDir = new File(minecraftDir, "versions/" + minecraftVersion + "/" + minecraftVersion + "-natives");
-    File minecraftJar = new File(minecraftDir, "versions/" + minecraftVersion + "/" + minecraftVersion + ".jar");
+    public File getPath() {
+      String[] parts = name.split(":");
+      if (parts.length < 3) return null;
 
-    if (!minecraftJar.exists()) {
-      throw new IOException("Minecraft JAR не найден: " + minecraftJar.getAbsolutePath());
-    }
-    if (!librariesDir.exists()) {
-      throw new IOException("Папка libraries не найдена: " + librariesDir.getAbsolutePath());
-    }
-    if (!nativesDir.exists()) {
-      throw new IOException("Папка natives не найдена: " + nativesDir.getAbsolutePath());
+      String path = String.join("/", parts[0].replace(".", "/"), parts[1], parts[2]);
+      String fileName = parts[1] + "-" + parts[2] + ".jar";
+      return new File(LIBRARIES_DIR, path + "/" + fileName);
     }
 
-
-    Set<String> classpathEntries = new HashSet<>();
-    appendLibraries(librariesDir, classpathEntries);
-    classpathEntries.add(minecraftJar.getAbsolutePath());
-
-    if (useJava17Plus) {
-      File lwjglPatch = new File(librariesDir, "lwjgl3ify-forgePatches.jar");
-      if (lwjglPatch.exists()) {
-        classpathEntries.add(lwjglPatch.getAbsolutePath());
-      } else {
-        log("⚠️ lwjgl3ify-forgePatches.jar не найден.");
-      }
+    public String getName() {
+      return name;
     }
+  }
 
+  public static ProcessBuilder launch(File javaPath, int ramGb, File gameDir, String username, String uuid, String accessToken) throws IOException {
 
-    String classpath = String.join(File.pathSeparator, classpathEntries);
+    List<JsonObject> allJsons = loadAllJson();
+
+    List<String> jvmArgs = collectJvmArgs(allJsons);
+    String mainClass = resolveMainClass(allJsons);
+    List<Library> libraries = collectLiberies(allJsons);
+    List<String> classpath = downloadAndBuildClasspath(libraries);
+    File nativesDir = new File(gameDir, "natives");
+    NativesExtractor.extractNatives(nativesDir, libraries);
+
+    jvmArgs.add("-Djava.library.path=" + nativesDir.getAbsolutePath());
+
+    String mcArgs = resolverMinecraftArgs(allJsons);
+    mcArgs = mcArgs
+        .replace("${auth_player_name}", username)
+        .replace("${auth_uuid}", uuid)
+        .replace("${auth_access_token}", accessToken)
+        .replace("${version_name}", "GTNH")
+        .replace("${game_directory}", gameDir.getAbsolutePath())
+        .replace("${assets_root}", new File(gameDir, "assets").getAbsolutePath())
+        .replace("${assets_index_name}", "1.7.10")
+        .replace("${user_properties}", "{}")
+        .replace("${user_type}", "legacy");
+
+    System.out.println("Test Arg: " + mcArgs);
 
     List<String> command = new ArrayList<>();
     command.add(javaPath.getAbsolutePath());
     command.add("-Xmx" + ramGb + "G");
     command.add("-Xms" + Math.min(ramGb, 2) + "G");
-
-    // JVM-аргументы
-    if (!useJava17Plus) {
-      // Оптимизации для Java 8
-      command.add("-XX:+UseG1GC");
-      command.add("-XX:+UnlockExperimentalVMOptions");
-      command.add("-XX:G1NewSizePercent=20");
-      command.add("-XX:G1ReservePercent=20");
-      command.add("-XX:MaxGCPauseMillis=50");
-      command.add("-XX:G1HeapRegionSize=32M");
-    } else {
-      // Для Java 17+ с кастомным Forge
-      command.add("-Dfml.readTimeout=180");
-    }
-
-    command.add("-Djava.library.path=" + nativesDir.getAbsolutePath());
+    command.addAll(jvmArgs);
     command.add("-cp");
-    command.add(classpath);
+    command.add(String.join(File.pathSeparator, classpath));
+    command.add(mainClass);
+    command.addAll(Arrays.asList(mcArgs.split(" ")));
 
-    command.add(useJava17Plus ? "cpw.mods.fml.common.launcher.FMLTweaker" : "net.minecraft.launchwrapper.Launch");
+    System.out.println("Test commands: " + command);
+    return new ProcessBuilder(command).directory(gameDir);
+  }
 
-    // Аргументы Minecraft
-    command.add("--username");
-    command.add(username);
-    command.add("--version");
-    command.add(minecraftVersion);
-    command.add("--gameDir");
-    command.add(gameDir.getAbsolutePath());
-    command.add("--assetsDir");
-    command.add(new File(gameDir, "assets").getAbsolutePath());
-    command.add("--tweakClass");
-    command.add(useJava17Plus ? "org.spongepowered.asm.launch.MixinTweaker" : "cpw.mods.fml.common.launcher.FMLTweaker");
+  private static List<JsonObject> loadAllJson() throws IOException {
+    List<MmcPackParser.Component> components = MmcPackParser.loadComponents(mmcPack);
+    List<File> patchFiles = MmcPackParser.resolveComponentJsonFiles(PATCHES_DIR, components);
 
-    log("Команда запуска:");
-    for (String arg : command) log("  " + arg);
-
-    ProcessBuilder processBuilder = new ProcessBuilder(command);
-    processBuilder.directory(gameDir);
-    processBuilder.redirectErrorStream(true);
-
-    File mcLogFile = new File(gameDir, "latest.log");
-    Process process = processBuilder.start();
-
-    try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream())); FileWriter logWriter = new FileWriter(mcLogFile, true)) {
-      String line;
-      while ((line = reader.readLine()) != null) {
-        System.out.println(line);
-        logWriter.write(line + "\n");
+    List<JsonObject> result = new ArrayList<>();
+    for (File file : patchFiles) {
+      try (Reader reader = new InputStreamReader(new FileInputStream(file), "UTF-8")) {
+        result.add(JsonParser.parseReader(reader).getAsJsonObject());
       }
     }
-    int exitCode = process.waitFor();
-    log("=== Завершено с кодом: " + exitCode + " ===");
+    return result;
   }
 
-  private static void appendLibraries(File librariesDir, Set<String> classpathEntries) {
-    if (librariesDir == null || !librariesDir.exists()) return;
-    for (File file : Objects.requireNonNull(librariesDir.listFiles())) {
-      if (file.isDirectory()) {
-        appendLibraries(file, classpathEntries);
-      } else if (file.getName().endsWith(".jar")) {
-        classpathEntries.add(file.getAbsolutePath());
+  private static List<String> collectJvmArgs(List<JsonObject> jsonObjects) {
+    List<String> result = new ArrayList<>();
+    for (JsonObject jsonObject : jsonObjects) {
+      if (jsonObject.has("+jvmArgs")) {
+        JsonArray arr = jsonObject.getAsJsonArray("+jvmArgs");
+        for (JsonElement jsonElement : arr) result.add(jsonElement.getAsString());
       }
     }
+    return result;
   }
 
-  private static void log(String message) {
-    String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
-    String line = "[" + timestamp + "] " + message;
-    System.out.println(line);
-    try (FileWriter fw = new FileWriter(logFile, true)) {
-      fw.write(line + "\n");
-    } catch (IOException e) {
-      System.err.println("Ошибка записи в лог: " + e.getMessage());
-    }
+  private static String resolveMainClass(List<JsonObject> jsonObjects) {
+    return jsonObjects.stream()
+        .filter(jsonObject -> jsonObject.has("mainClass"))
+        .max(Comparator.comparingInt(o -> o.has("order") ? o.get("order").getAsInt() : 0))
+        .map(obj -> obj.get("mainClass").getAsString())
+        .orElse("net.minecraft.client.main.Main");
   }
+
+  private static String resolverMinecraftArgs(List<JsonObject> jsonObjects) {
+    return jsonObjects.stream()
+        .filter(jsonObject -> jsonObject.has("minecraftArguments"))
+        .map(obj -> obj.get("minecraftArguments").getAsString())
+        .findFirst()
+        .orElse("");
+  }
+
+  private static List<Library> collectLiberies(List<JsonObject> jsonObjects) {
+    List<Library> result = new ArrayList<>();
+    for (JsonObject jsonObject : jsonObjects) {
+      if (jsonObject.has("libraries")) {
+        for (JsonElement element : jsonObject.getAsJsonArray("libraries")) {
+          JsonObject libObj = element.getAsJsonObject();
+          String name = libObj.get("name").getAsString();
+
+          if (libObj.has("downloads")) {
+            JsonObject downloads = libObj.getAsJsonObject("downloads");
+            if (downloads.has("artifact")) {
+              JsonObject art = downloads.getAsJsonObject("artifact");
+              String url = art.get("url").getAsString();
+              String sha1 = art.get("sha1").getAsString();
+              long size = art.get("size").getAsLong();
+              result.add(new Library(name, url, sha1, size));
+            }
+          } else if (libObj.has("MMC-hint") && libObj.get("MMC-hint").getAsString().equals("local")) {
+            result.add(new Library(name, null, null, 0));
+          }
+        }
+      }
+    }
+    return result;
+  }
+
+  private static List<String> downloadAndBuildClasspath(List<Library> libraries) throws IOException {
+    List<String> result = new ArrayList<>();
+    for (Library lib : libraries) {
+      File file = lib.getPath();
+      if (!file.exists() && lib.hasArtifact) {
+        file.getParentFile().mkdirs();
+        System.out.println("⬇ Downloading: " + file.getName());
+        try (InputStream in = new URL(lib.url).openStream()) {
+          Files.copy(in, file.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+      }
+      result.add(file.getAbsolutePath());
+    }
+    return result;
+  }
+
 }
