@@ -1,4 +1,4 @@
-package zi.zircky.gtnhlauncher.service.download;
+package zi.zircky.gtnhlauncher.utils;
 
 import java.io.File;
 

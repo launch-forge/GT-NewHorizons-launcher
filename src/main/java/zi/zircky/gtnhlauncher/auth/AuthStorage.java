@@ -2,7 +2,7 @@ package zi.zircky.gtnhlauncher.auth;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import zi.zircky.gtnhlauncher.service.download.MinecraftUtils;
+import zi.zircky.gtnhlauncher.utils.MinecraftUtils;
 
 import java.io.File;
 import java.io.FileReader;
@@ -10,7 +10,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 
 public class AuthStorage {
-  private static final File AUTH_FILE = new File(MinecraftUtils.getMinecraftDir(), "auth.json");
+  private static final File AUTH_FILE = new File(MinecraftUtils.getMinecraftDir(), "account.json");
   private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
   public static class AuthInfo {
