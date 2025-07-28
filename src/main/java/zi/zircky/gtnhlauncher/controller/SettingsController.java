@@ -153,7 +153,7 @@ public class SettingsController {
     }
 
     String fileName = file.getName().toLowerCase();
-    if (!(fileName.equals("java") || fileName.equals("java.exe"))) {
+    if (!(fileName.equals("java") || fileName.equals("java.exe")) && !(fileName.equals("javaw") || fileName.equals("javaw.exe"))) {
       return false;
     }
 

@@ -4,23 +4,31 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import zi.zircky.gtnhlauncher.utils.MinecraftUtils;
 
 import java.io.*;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.logging.Logger;
 
 
 public class MinecraftLauncher {
-
+  private static final Logger logger = Logger.getLogger(MinecraftLauncher.class.getName());
+  private static final String LIBRARIES = "libraries";
   private static final File mcDir = MinecraftUtils.getMinecraftDir();
   private static final File mmcPack = new File(mcDir, "mmc-pack.json");
   private static final File PATCHES_DIR = new File(mcDir, "patches");
-  private static final File LIBRARIES_DIR = new File(mcDir, "libraries");
+  private static final File LIBRARIES_DIR = new File(mcDir, LIBRARIES);
+
+  private MinecraftLauncher() {
+    throw new IllegalStateException("Minecraft Launcher");
+  }
 
   public static class Library {
     String name;
@@ -62,6 +70,21 @@ public class MinecraftLauncher {
     List<String> jvmArgs = collectJvmArgs(allJsons);
     String mainClass = resolveMainClass(allJsons);
     List<Library> libraries = collectLiberies(allJsons);
+    Library earlyClasspathLib = libraries.stream()
+        .filter(lib -> lib.getName().startsWith("me.eigenraven.lwjgl3ify.forgepatches"))
+        .findFirst()
+        .orElse(null);
+    if (earlyClasspathLib != null) {
+      File earlyJar = earlyClasspathLib.getPath();
+      if (earlyJar != null && earlyJar.exists()) {
+        jvmArgs.add("-Xbootclasspath/a:" + earlyJar.getAbsolutePath());
+      } else {
+        logger.warning("Не найден forgepatches JAR: " + earlyJar);
+      }
+    } else {
+      logger.warning("Не найдена библиотека forgepatches в списке компонентов");
+    }
+
     List<String> classpath = downloadAndBuildClasspath(libraries);
     File nativesDir = new File(gameDir, "natives");
     NativesExtractor.extractNatives(nativesDir, libraries);
@@ -80,7 +103,7 @@ public class MinecraftLauncher {
         .replace("${user_properties}", "{}")
         .replace("${user_type}", "legacy");
 
-    System.out.println("Test Arg: " + mcArgs);
+    logger.info("Test Arg: " + mcArgs);
 
     List<String> command = new ArrayList<>();
     command.add(javaPath.getAbsolutePath());
@@ -92,7 +115,7 @@ public class MinecraftLauncher {
     command.add(mainClass);
     command.addAll(Arrays.asList(mcArgs.split(" ")));
 
-    System.out.println("Test commands: " + command);
+    logger.info("Test commands: " + command);
     return new ProcessBuilder(command).directory(gameDir);
   }
 
@@ -102,7 +125,7 @@ public class MinecraftLauncher {
 
     List<JsonObject> result = new ArrayList<>();
     for (File file : patchFiles) {
-      try (Reader reader = new InputStreamReader(new FileInputStream(file), "UTF-8")) {
+      try (Reader reader = new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8)) {
         result.add(JsonParser.parseReader(reader).getAsJsonObject());
       }
     }
@@ -168,13 +191,14 @@ public class MinecraftLauncher {
       File file = lib.getPath();
       if (!file.exists() && lib.hasArtifact) {
         file.getParentFile().mkdirs();
-        System.out.println("⬇ Downloading: " + file.getName());
+        logger.info("⬇ Downloading: " + file.getName());
         try (InputStream in = new URL(lib.url).openStream()) {
           Files.copy(in, file.toPath(), StandardCopyOption.REPLACE_EXISTING);
         }
       }
       result.add(file.getAbsolutePath());
     }
+
     return result;
   }
 

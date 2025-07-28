@@ -13,7 +13,7 @@ import javafx.stage.Stage;
 import zi.zircky.gtnhlauncher.LauncherApplication;
 import zi.zircky.gtnhlauncher.auth.AuthStorage;
 import zi.zircky.gtnhlauncher.service.download.MinecraftLauncher;
-import zi.zircky.gtnhlauncher.service.download.MinecraftUtils;
+import zi.zircky.gtnhlauncher.utils.MinecraftUtils;
 import zi.zircky.gtnhlauncher.service.download.MojangInstaller;
 import zi.zircky.gtnhlauncher.service.gtnh.GtnhBuild;
 import zi.zircky.gtnhlauncher.service.settings.SettingsConfig;
