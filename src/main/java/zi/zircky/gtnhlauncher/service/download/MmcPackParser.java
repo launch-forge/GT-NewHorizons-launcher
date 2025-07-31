@@ -11,13 +11,37 @@ import java.util.List;
 
 public class MmcPackParser {
   public static class Component {
-    public String uid;
-    public String version;
-    public String cachedName;
+    private String uid;
+    private String version;
+    private String cachedName;
 
     @Override
     public String toString() {
-      return uid + ":" + version;
+      return getUid() + ":" + getVersion();
+    }
+
+    public String getUid() {
+      return uid;
+    }
+
+    public void setUid(String uid) {
+      this.uid = uid;
+    }
+
+    public String getVersion() {
+      return version;
+    }
+
+    public void setVersion(String version) {
+      this.version = version;
+    }
+
+    public String getCachedName() {
+      return cachedName;
+    }
+
+    public void setCachedName(String cachedName) {
+      this.cachedName = cachedName;
     }
   }
 
@@ -30,9 +54,9 @@ public class MmcPackParser {
       for (JsonElement el : comps) {
         JsonObject obj = el.getAsJsonObject();
         Component comp = new Component();
-        comp.uid = obj.get("uid").getAsString();
-        comp.version = obj.has("version") ? obj.get("version").getAsString() : "";
-        comp.cachedName = obj.has("cachedName") ? obj.get("cachedName").getAsString() : comp.uid;
+        comp.setUid(obj.get("uid").getAsString());
+        comp.setVersion(obj.has("version") ? obj.get("version").getAsString() : "");
+        comp.setCachedName(obj.has("cachedName") ? obj.get("cachedName").getAsString() : comp.getUid());
         result.add(comp);
       }
 
@@ -40,14 +64,23 @@ public class MmcPackParser {
     }
   }
 
+  public static File resolveComponentJarFile(File patchesDir, Component component) {
+    if (component.version != null && !component.version.isEmpty()) {
+      return new File(patchesDir, component.uid + "-" + component.version + ".jar");
+    } else {
+      // Если версия отсутствует — не может быть JAR
+      return null; // или верни null
+    }
+  }
+
   public static List<File> resolveComponentJsonFiles(File patchesDir, List<Component> components) {
     List<File> result = new ArrayList<>();
     for (Component comp : components) {
-      File jsonFile = new File(patchesDir, comp.uid + ".json");
+      File jsonFile = new File(patchesDir, comp.getUid() + ".json");
       if (jsonFile.exists()) {
         result.add(jsonFile);
       } else {
-        System.err.println("[WARN] Component not found in patches: " + comp.uid);
+        System.err.println("[WARN] Component not found in patches: " + comp.getUid());
       }
     }
     return result;
