@@ -13,10 +13,10 @@ import javafx.stage.Stage;
 import zi.zircky.gtnhlauncher.LauncherApplication;
 import zi.zircky.gtnhlauncher.auth.AuthStorage;
 import zi.zircky.gtnhlauncher.service.download.MinecraftLauncher;
-import zi.zircky.gtnhlauncher.utils.MinecraftUtils;
 import zi.zircky.gtnhlauncher.service.download.MojangInstaller;
 import zi.zircky.gtnhlauncher.service.gtnh.GtnhBuild;
 import zi.zircky.gtnhlauncher.service.settings.SettingsConfig;
+import zi.zircky.gtnhlauncher.utils.MinecraftUtils;
 
 import java.awt.*;
 import java.io.*;
@@ -302,7 +302,32 @@ public class LauncherController {
 
       ProcessBuilder builder = MinecraftLauncher.launch(javaFile, ram, gameDir, auth.username, auth.uuid, auth.accessToken);
 
-      builder.start();
+      Process process = builder.start();
+      System.out.println("Запущен Minecraft PID: " + process.pid());
+
+// Поток вывода Minecraft
+      new Thread(() -> {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+          String line;
+          while ((line = reader.readLine()) != null) {
+            System.out.println("[MC-OUT] " + line);
+          }
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      }).start();
+
+// Поток ошибок Minecraft
+      new Thread(() -> {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
+          String line;
+          while ((line = reader.readLine()) != null) {
+            System.err.println("[MC-ERR] " + line);
+          }
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      }).start();
 
     } catch (Exception e) {
       e.printStackTrace();

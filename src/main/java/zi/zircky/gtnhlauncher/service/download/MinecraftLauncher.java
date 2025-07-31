@@ -21,6 +21,7 @@ import java.util.logging.Logger;
 public class MinecraftLauncher {
   private static final Logger logger = Logger.getLogger(MinecraftLauncher.class.getName());
   private static final String LIBRARIES = "libraries";
+  private static final String ADDOPENS = "--add-opens";
   private static final File mcDir = MinecraftUtils.getMinecraftDir();
   private static final File mmcPack = new File(mcDir, "mmc-pack.json");
   private static final File PATCHES_DIR = new File(mcDir, "patches");
@@ -65,27 +66,69 @@ public class MinecraftLauncher {
 
   public static ProcessBuilder launch(File javaPath, int ramGb, File gameDir, String username, String uuid, String accessToken) throws IOException {
 
-    List<JsonObject> allJsons = loadAllJson();
+    List<MmcPackParser.Component> components = MmcPackParser.loadComponents(mmcPack);
+    List<File> patchFiles = MmcPackParser.resolveComponentJsonFiles(PATCHES_DIR, components);
+
+    List<JsonObject> allJsons = new ArrayList<>();
+    for (File file : patchFiles) {
+      try (Reader reader = new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8)) {
+        JsonObject json = JsonParser.parseReader(reader).getAsJsonObject();
+        allJsons.add(json);
+        logger.info("Parsed patch file: " + file.getAbsolutePath());
+      } catch (IOException e) {
+        logger.warning("Failed to parse patch file: " + file.getAbsolutePath() + " - " + e.getMessage());
+      }
+    }
 
     List<String> jvmArgs = collectJvmArgs(allJsons);
+    jvmArgs.add("-Dfile.encoding=UTF-8");
+    jvmArgs.add("-Djava.system.class.loader=com.gtnewhorizons.retrofuturabootstrap.RfbSystemClassLoader");
+    jvmArgs.addAll(List.of(
+        ADDOPENS, "java.base/java.io=ALL-UNNAMED",
+        ADDOPENS, "java.base/java.lang=ALL-UNNAMED",
+        ADDOPENS, "java.base/java.lang.invoke=ALL-UNNAMED",
+        ADDOPENS, "java.base/java.lang.ref=ALL-UNNAMED",
+        ADDOPENS, "java.base/java.nio=ALL-UNNAMED",
+        ADDOPENS, "java.base/java.util=ALL-UNNAMED",
+        ADDOPENS, "java.base/java.util.zip=ALL-UNNAMED",
+        ADDOPENS, "java.base/jdk.internal.loader=ALL-UNNAMED"
+    ));
     String mainClass = resolveMainClass(allJsons);
     List<Library> libraries = collectLiberies(allJsons);
-    Library earlyClasspathLib = libraries.stream()
-        .filter(lib -> lib.getName().startsWith("me.eigenraven.lwjgl3ify.forgepatches"))
-        .findFirst()
-        .orElse(null);
-    if (earlyClasspathLib != null) {
-      File earlyJar = earlyClasspathLib.getPath();
-      if (earlyJar != null && earlyJar.exists()) {
-        jvmArgs.add("-Xbootclasspath/a:" + earlyJar.getAbsolutePath());
-      } else {
-        logger.warning("Не найден forgepatches JAR: " + earlyJar);
-      }
+
+    File lwjgl3ifyJar = new File(LIBRARIES_DIR, "lwjgl3ify-2.1.14-forgePatches.jar");
+    if (lwjgl3ifyJar.exists()) {
+      libraries.add(new Library("me.eigenraven:lwjgl3ify:2.1.14:forgePatches", null, null, 0));
+      logger.info("✅ Added lwjgl3ify-2.1.14-forgePatches.jar: " + lwjgl3ifyJar.getAbsolutePath());
     } else {
-      logger.warning("Не найдена библиотека forgepatches в списке компонентов");
+      logger.warning("❌ lwjgl3ify-2.1.14-forgePatches.jar not found at: " + lwjgl3ifyJar.getAbsolutePath());
     }
 
     List<String> classpath = downloadAndBuildClasspath(libraries);
+
+    components.stream()
+        .filter(c -> c.getUid().equals("me.eigenraven.lwjgl3ify.forgepatches"))
+        .findFirst()
+        .map(comp -> MmcPackParser.resolveComponentJarFile(PATCHES_DIR, comp))
+        .ifPresentOrElse(
+            forgepatchJar -> {
+              if (forgepatchJar.exists() && !classpath.contains(forgepatchJar.getAbsolutePath())) {
+                classpath.add(0, forgepatchJar.getAbsolutePath());
+                logger.info("✅ Forgepatches added: " + forgepatchJar.getAbsolutePath());
+              } else if (!forgepatchJar.exists()) {
+                logger.warning("❌ Jar for Forgepatches was not found: " + forgepatchJar.getAbsolutePath());
+              }
+            },
+            () -> logger.warning("❌ Component forgepatches not found in mmc-pack.json")
+        );
+
+
+    String minecraftVersion = components.stream()
+        .filter(c -> c.getUid().equals("net.minecraft") || c.getUid().equals("Minecraft with LWJGL3"))
+        .findFirst()
+        .map(MmcPackParser.Component::getVersion)
+        .orElse("1.7.10");
+
     File nativesDir = new File(gameDir, "natives");
     NativesExtractor.extractNatives(nativesDir, libraries);
 
@@ -96,14 +139,12 @@ public class MinecraftLauncher {
         .replace("${auth_player_name}", username)
         .replace("${auth_uuid}", uuid)
         .replace("${auth_access_token}", accessToken)
-        .replace("${version_name}", "GTNH")
-        .replace("${game_directory}", gameDir.getAbsolutePath())
+        .replace("${version_name}", minecraftVersion)
+        .replace("${game_directory}", gameDir.getAbsolutePath() + "/.minecraft")
         .replace("${assets_root}", new File(gameDir, "assets").getAbsolutePath())
-        .replace("${assets_index_name}", "1.7.10")
+        .replace("${assets_index_name}", minecraftVersion)
         .replace("${user_properties}", "{}")
         .replace("${user_type}", "legacy");
-
-    logger.info("Test Arg: " + mcArgs);
 
     List<String> command = new ArrayList<>();
     command.add(javaPath.getAbsolutePath());
