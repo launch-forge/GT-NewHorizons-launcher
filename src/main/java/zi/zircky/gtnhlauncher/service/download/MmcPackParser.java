@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -13,6 +14,7 @@ public class MmcPackParser {
   public static class Component {
     private String uid;
     private String version;
+    private String cachedVersion;
     private String cachedName;
 
     @Override
@@ -36,6 +38,14 @@ public class MmcPackParser {
       this.version = version;
     }
 
+    public String getCachedVersion() {
+      return cachedVersion;
+    }
+
+    public void setCachedVersion(String cachedVersion) {
+      this.cachedVersion = cachedVersion;
+    }
+
     public String getCachedName() {
       return cachedName;
     }
@@ -46,7 +56,7 @@ public class MmcPackParser {
   }
 
   public static List<Component> loadComponents(File mmcPackJson) throws IOException {
-    try (Reader reader = new InputStreamReader(new FileInputStream(mmcPackJson), "UTF-8")) {
+    try (Reader reader = new InputStreamReader(new FileInputStream(mmcPackJson), StandardCharsets.UTF_8)) {
       JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
       JsonArray comps = root.getAsJsonArray("components");
 
@@ -56,6 +66,7 @@ public class MmcPackParser {
         Component comp = new Component();
         comp.setUid(obj.get("uid").getAsString());
         comp.setVersion(obj.has("version") ? obj.get("version").getAsString() : "");
+        comp.setCachedVersion(obj.has("cachedVersion") ? obj.get("cachedVersion").getAsString() : "");
         comp.setCachedName(obj.has("cachedName") ? obj.get("cachedName").getAsString() : comp.getUid());
         result.add(comp);
       }

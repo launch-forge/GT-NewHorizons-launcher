@@ -300,7 +300,7 @@ public class LauncherController {
       File mmcPackJson = new File(gameDir, "mmc-pack.json");
       File librariesDir = new File(gameDir, "libraries");
 
-      ProcessBuilder builder = MinecraftLauncher.launch(javaFile, ram, gameDir, auth.username, auth.uuid, auth.accessToken);
+      ProcessBuilder builder = MinecraftLauncher.launch(javaFile, ram, gameDir, auth.username, auth.uuid, auth.accessToken, isJava17);
 
       Process process = builder.start();
       System.out.println("Запущен Minecraft PID: " + process.pid());
