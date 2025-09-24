@@ -5,7 +5,7 @@ module zi.zircky.gtnhlauncher {
   requires java.desktop;
   requires scribejava.core;
   requires scribejava.apis;
-
+  requires org.slf4j;
   requires java.net.http;
   requires com.fasterxml.jackson.databind;
   requires jdk.httpserver;
@@ -13,6 +13,8 @@ module zi.zircky.gtnhlauncher {
   requires java.logging;
   requires jdk.management;
   requires java.compiler;
+  requires static lombok;
+  requires org.json;
 
   opens zi.zircky.gtnhlauncher.auth to com.google.gson;
   opens zi.zircky.gtnhlauncher.service.settings to com.google.gson;

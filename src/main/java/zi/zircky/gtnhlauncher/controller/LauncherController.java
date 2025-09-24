@@ -1,5 +1,7 @@
 package zi.zircky.gtnhlauncher.controller;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
@@ -174,10 +176,12 @@ public class LauncherController {
   }
 
   private String loadAccountFromFile() {
-    File file = new File("account.txt");
+    File file = new File(MinecraftUtils.getMinecraftDir(), "account.json");
     if (file.exists()) {
       try {
-        return Files.readString(file.toPath());
+        String content = Files.readString(file.toPath());
+        JsonObject json = JsonParser.parseString(content).getAsJsonObject();
+        return json.get("username").getAsString();
       } catch (IOException e) {
         e.printStackTrace();
       }
@@ -295,15 +299,11 @@ public class LauncherController {
       File javaFile = new File(config.getJavaPath());
       int ram = config.getAllocatedRam();
       AuthStorage.AuthInfo auth = AuthStorage.load();
-      boolean isJava17 = config.isVersionJava(); // true — если Java 17+, false — если Java 8
-      File gameDir = mcDir; // рабочая директория Minecraft
-      File mmcPackJson = new File(gameDir, "mmc-pack.json");
-      File librariesDir = new File(gameDir, "libraries");
+      boolean isJava17 = config.isVersionJava();
 
-      ProcessBuilder builder = MinecraftLauncher.launch(javaFile, ram, gameDir, auth.username, auth.uuid, auth.accessToken, isJava17);
-
+      ProcessBuilder builder = MinecraftLauncher.launch(javaFile, ram, auth.username, auth.uuid, auth.accessToken, isJava17);
       Process process = builder.start();
-      System.out.println("Запущен Minecraft PID: " + process.pid());
+      System.out.println("Runned Minecraft PID: " + process.pid());
 
 // Поток вывода Minecraft
       new Thread(() -> {

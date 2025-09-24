@@ -16,6 +16,8 @@ public class MmcPackParser {
     private String version;
     private String cachedVersion;
     private String cachedName;
+    private boolean important;
+    private boolean dependencyOnly;
 
     @Override
     public String toString() {
@@ -72,6 +74,7 @@ public class MmcPackParser {
       }
 
       return result;
+
     }
   }
 

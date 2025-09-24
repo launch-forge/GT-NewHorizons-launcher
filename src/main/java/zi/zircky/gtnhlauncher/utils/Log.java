@@ -9,7 +9,7 @@ import java.util.Date;
 public class Log {
   public static final File logFile = new File("launcher.log");
 
-  public static void log(String message) {
+  public static void logs(String message) {
 
     String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
     String line = "[" + timestamp + "] " + message;

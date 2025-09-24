@@ -12,7 +12,6 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
 public class NativesExtractor {
-
   public static boolean isAllowedByRules(JsonArray rules) {
     OperatingSystem current = OperatingSystem.getCurrent();
     boolean allowed = true;
@@ -48,20 +47,20 @@ public class NativesExtractor {
    * @throws IOException если произошла ошибка ввода-вывода
    */
   public static void extractNatives(File nativesDir, List<MinecraftLauncher.Library> libraries) throws IOException {
-    if (!nativesDir.exists()) {
-      if (!nativesDir.mkdirs()) {
-        throw new IOException("Не удалось создать папку для natives: " + nativesDir.getAbsolutePath());
-      }
+    if (!nativesDir.exists() && !nativesDir.mkdirs()) {
+      throw new IOException("It was not possible to create a folder for natives: " + nativesDir.getAbsolutePath());
     }
 
     for (MinecraftLauncher.Library lib : libraries) {
       if (!lib.isNative()) continue;
 
       File jarFile = lib.getPath();
+      System.out.println("Native: "+jarFile);
       if (!jarFile.exists()) {
-        System.err.println("[WARN] Не найден natives jar: " + jarFile);
+        System.err.println("[WARN] Not Naiden Natives Jar: " + jarFile);
         continue;
       }
+
 
       try (JarFile jar = new JarFile(jarFile)) {
         Enumeration<JarEntry> entries = jar.entries();
@@ -74,6 +73,9 @@ public class NativesExtractor {
           if (!(name.endsWith(".dll") || name.endsWith(".so") || name.endsWith(".dylib"))) continue;
 
           File outFile = new File(nativesDir, new File(name).getName());
+
+          if (outFile.exists()) continue;
+
           try (InputStream in = jar.getInputStream(entry);
                OutputStream out = new FileOutputStream(outFile)) {
             byte[] buffer = new byte[8192];
@@ -82,8 +84,10 @@ public class NativesExtractor {
               out.write(buffer, 0, len);
             }
           }
+          System.out.println("✅ Extracted: " + outFile.getName());
         }
       }
     }
   }
+
 }
